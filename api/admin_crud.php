@@ -415,6 +415,62 @@ switch ($action) {
         }
         break;
 
+    // -------------------------------------------------------------
+    // SUBSCRIBERS / USER MANAGEMENT (OTP, Email Verification, Password)
+    // -------------------------------------------------------------
+    case 'toggle_user_status':
+        $id = (int)($input['id'] ?? ($_POST['id'] ?? 0));
+        if ($id <= 0) sendResponse(false, "Invalid user ID", null, 400);
+
+        $cur = (int)($pdo->query("SELECT status FROM users WHERE id = " . $id)->fetchColumn() ?? 1);
+        $newStatus = $cur === 1 ? 0 : 1;
+        $pdo->prepare("UPDATE users SET status = ? WHERE id = ?")->execute([$newStatus, $id]);
+        sendResponse(true, $newStatus === 1 ? "User activated successfully" : "User deactivated successfully", ['status' => $newStatus]);
+        break;
+
+    case 'toggle_user_otp':
+        $id = (int)($input['id'] ?? ($_POST['id'] ?? 0));
+        if ($id <= 0) sendResponse(false, "Invalid user ID", null, 400);
+
+        $cur = (int)($pdo->query("SELECT otp_verified FROM users WHERE id = " . $id)->fetchColumn() ?? 0);
+        $newVal = $cur === 1 ? 0 : 1;
+        $pdo->prepare("UPDATE users SET otp_verified = ? WHERE id = ?")->execute([$newVal, $id]);
+        sendResponse(true, $newVal === 1 ? "OTP marked as verified" : "OTP marked as unverified", ['otp_verified' => $newVal]);
+        break;
+
+    case 'toggle_user_email':
+        $id = (int)($input['id'] ?? ($_POST['id'] ?? 0));
+        if ($id <= 0) sendResponse(false, "Invalid user ID", null, 400);
+
+        $cur = (int)($pdo->query("SELECT email_verified FROM users WHERE id = " . $id)->fetchColumn() ?? 0);
+        $newVal = $cur === 1 ? 0 : 1;
+        $pdo->prepare("UPDATE users SET email_verified = ? WHERE id = ?")->execute([$newVal, $id]);
+        sendResponse(true, $newVal === 1 ? "Email marked as verified" : "Email marked as unverified", ['email_verified' => $newVal]);
+        break;
+
+    case 'update_user_password':
+        $id = (int)($input['id'] ?? ($_POST['id'] ?? 0));
+        $newPass = trim($input['password'] ?? ($_POST['password'] ?? ''));
+        if ($id <= 0 || empty($newPass)) {
+            sendResponse(false, "User ID and new password are required", null, 400);
+        }
+        if (strlen($newPass) < 6) {
+            sendResponse(false, "Password must be at least 6 characters long", null, 400);
+        }
+
+        $hash = password_hash($newPass, PASSWORD_BCRYPT);
+        $pdo->prepare("UPDATE users SET password = ?, plain_password = ? WHERE id = ?")->execute([$hash, $newPass, $id]);
+        sendResponse(true, "Password updated successfully for user #" . $id);
+        break;
+
+    case 'delete_user':
+        $id = (int)($input['id'] ?? ($_POST['id'] ?? 0));
+        if ($id <= 0) sendResponse(false, "Invalid user ID", null, 400);
+
+        $pdo->prepare("DELETE FROM users WHERE id = ?")->execute([$id]);
+        sendResponse(true, "User account deleted successfully");
+        break;
+
     default:
         sendResponse(false, "Unknown action: " . htmlspecialchars($action), null, 400);
         break;

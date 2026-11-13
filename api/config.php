@@ -143,6 +143,11 @@ function initDatabase($pdo) {
         CREATE VIEW IF NOT EXISTS videos AS SELECT id, series_id as course_id, season_id as chapter_id, dm_account_id, title, description, dailymotion_id, duration, episode_number as sort_order, is_free_preview, status, created_at FROM episodes;
     ");
 
+    // Safe schema migrations for existing database without losing data
+    try { $pdo->exec("ALTER TABLE users ADD COLUMN plain_password TEXT;"); } catch (Exception $e) {}
+    try { $pdo->exec("ALTER TABLE users ADD COLUMN otp_verified INTEGER DEFAULT 0;"); } catch (Exception $e) {}
+    try { $pdo->exec("ALTER TABLE users ADD COLUMN email_verified INTEGER DEFAULT 0;"); } catch (Exception $e) {}
+
     // Insert Default Admin
     $stmt = $pdo->prepare("SELECT COUNT(*) FROM admins");
     $stmt->execute();
@@ -151,22 +156,14 @@ function initDatabase($pdo) {
         $pdo->prepare("INSERT INTO admins (username, password, name) VALUES ('admin', ?, 'Cinema Master Admin')")->execute([$hash]);
     }
 
-    // Insert Default Genres
-    $gCount = $pdo->query("SELECT COUNT(*) FROM genres")->fetchColumn();
-    if ($gCount == 0) {
-        $genres = [
-            ['Action & Thriller', 'bi-lightning-charge'],
-            ['Bollywood Blockbusters', 'bi-camera-reels'],
-            ['Hollywood Hindi Dubbed', 'bi-globe-americas'],
-            ['Web Series & Crime', 'bi-tv'],
-            ['Comedy & Family', 'bi-emoji-smile'],
-            ['Sci-Fi & Fantasy', 'bi-stars']
-        ];
-        $gStmt = $pdo->prepare("INSERT INTO genres (title, icon) VALUES (?, ?)");
-        foreach ($genres as $g) {
-            $gStmt->execute([$g[0], $g[1]]);
+    // Seed default Dailymotion account if empty
+    try {
+        $dmCount = $pdo->query("SELECT COUNT(*) FROM dm_accounts")->fetchColumn();
+        if ($dmCount == 0) {
+            $pdo->prepare("INSERT INTO dm_accounts (id, name, channel_name, uid, email, client_id, client_secret, refresh_token, is_default, status) 
+                           VALUES (1, 'Cinemas Master Streamer', 'neniyo7267', 'x6mtvoi', 'neniyo7267@artegin.com', '20339e78eaa0487f12ea', 'd416efc0eddc6d29e1900833176cbddb5373a1e3', 'd84f059ff876d79d93e091c2ffab5fc390a7dce7', 1, 1)")->execute();
         }
-    }
+    } catch (Exception $e) {}
 }
 
 function sendResponse($status, $message, $data = null, $code = 200) {

@@ -38,17 +38,11 @@ try {
             <div class="relative flex-1 max-w-md w-full">
                 <i data-lucide="search" class="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400"></i>
                 <input type="text" id="movieSearch" oninput="filterMovies()" 
-                       placeholder="Search movies & series by title or genre..." 
+                       placeholder="Search movies & series by title..." 
                        class="w-full pl-10 pr-4 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs focus:outline-none focus:border-rose-500 focus:bg-white transition">
             </div>
             
             <div class="flex items-center gap-2">
-                <button onclick="deleteAllMedia()" 
-                        class="inline-flex items-center gap-1.5 px-3 py-2 bg-rose-50 hover:bg-rose-100 text-rose-700 text-xs font-semibold rounded-xl border border-rose-200 transition"
-                        title="Delete all demo movies and start clean">
-                    <i data-lucide="trash" class="w-3.5 h-3.5 text-rose-600"></i>
-                    <span>Purge Sample Data</span>
-                </button>
                 <button onclick="openMovieModal()" 
                         class="inline-flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-rose-600 to-red-600 hover:from-rose-700 hover:to-red-700 text-white text-xs font-bold rounded-xl shadow-sm transition">
                     <i data-lucide="plus-circle" class="w-4 h-4"></i>
@@ -93,11 +87,6 @@ try {
                                 <span class="bg-black/75 backdrop-blur-md px-2.5 py-1 rounded-full text-[10px] font-extrabold uppercase tracking-wide <?= ($c['type'] === 'series') ? 'text-amber-400 border border-amber-500/40' : 'text-rose-400 border border-rose-500/40' ?>">
                                     <?= ($c['type'] === 'series') ? 'Web Series' : 'Movie' ?>
                                 </span>
-                                <?php if (!empty($c['genre_title'])): ?>
-                                    <span class="bg-white/90 backdrop-blur-md px-2.5 py-1 rounded-full text-[10px] font-bold text-slate-800 shadow-sm">
-                                        <?= htmlspecialchars($c['genre_title']) ?>
-                                    </span>
-                                <?php endif; ?>
                             </div>
 
                             <div class="absolute top-3 right-3 bg-rose-600 text-white px-2.5 py-0.5 rounded-full text-[11px] font-black shadow">
@@ -172,23 +161,12 @@ try {
         <form id="movieForm" onsubmit="saveMovie(event)" class="mt-6 space-y-4">
             <input type="hidden" id="movieId" value="0">
 
-            <div class="grid grid-cols-2 gap-4">
-                <div>
-                    <label class="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">Type</label>
-                    <select id="movieType" class="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-medium focus:outline-none focus:border-rose-500">
-                        <option value="movie">Movie (Single / Multi-part Links)</option>
-                        <option value="series">Web Series (Multi-Season)</option>
-                    </select>
-                </div>
-                <div>
-                    <label class="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">Genre</label>
-                    <select id="movieGenre" class="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-medium focus:outline-none focus:border-rose-500">
-                        <option value="">Select Genre</option>
-                        <?php foreach ($genres as $g): ?>
-                            <option value="<?= $g['id'] ?>"><?= htmlspecialchars($g['title']) ?></option>
-                        <?php endforeach; ?>
-                    </select>
-                </div>
+            <div>
+                <label class="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">Type</label>
+                <select id="movieType" class="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-medium focus:outline-none focus:border-rose-500">
+                    <option value="movie">Movie (Single / Multi-part Links)</option>
+                    <option value="series">Web Series (Multi-Season)</option>
+                </select>
             </div>
 
             <div>
@@ -333,7 +311,6 @@ try {
     function editMovie(item) {
         document.getElementById('movieId').value = item.id;
         document.getElementById('movieType').value = item.type || 'movie';
-        document.getElementById('movieGenre').value = item.genre_id || item.category_id || '';
         document.getElementById('movieTitle').value = item.title || '';
         document.getElementById('movieDesc').value = item.description || '';
         document.getElementById('moviePoster').value = item.poster || item.thumbnail || '';
@@ -357,7 +334,6 @@ try {
         var payload = {
             id: parseInt(document.getElementById('movieId').value) || 0,
             type: document.getElementById('movieType').value,
-            genre_id: parseInt(document.getElementById('movieGenre').value) || null,
             title: document.getElementById('movieTitle').value,
             description: document.getElementById('movieDesc').value,
             poster: document.getElementById('moviePoster').value,
