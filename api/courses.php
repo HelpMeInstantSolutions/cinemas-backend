@@ -140,6 +140,8 @@ switch ($action) {
             $parts = $epStmt->fetchAll();
 
             $movieEpisodes = [];
+            $totalMovieSecs = 0;
+
             if (!empty($parts)) {
                 foreach ($parts as $p) {
                     $p['course_id'] = $p['series_id'];
@@ -147,6 +149,14 @@ switch ($action) {
                     $p['sort_order'] = $p['episode_number'];
                     if (empty($p['thumbnail'])) $p['thumbnail'] = $media['poster'];
                     $movieEpisodes[] = $p;
+
+                    // Calculate combined duration
+                    $dStr = trim($p['duration'] ?? '');
+                    if (preg_match('/^(\d+):(\d+):(\d+)$/', $dStr, $dm)) {
+                        $totalMovieSecs += ((int)$dm[1] * 3600) + ((int)$dm[2] * 60) + (int)$dm[3];
+                    } elseif (preg_match('/^(\d+):(\d+)$/', $dStr, $dm)) {
+                        $totalMovieSecs += ((int)$dm[1] * 60) + (int)$dm[2];
+                    }
                 }
             } else if (!empty($media['dailymotion_id'])) {
                 $movieEpisodes[] = [
@@ -167,6 +177,17 @@ switch ($action) {
                 ];
             }
 
+            if ($totalMovieSecs > 0) {
+                $hrs = floor($totalMovieSecs / 3600);
+                $mins = floor(($totalMovieSecs % 3600) / 60);
+                $secs = $totalMovieSecs % 60;
+                $formattedDuration = sprintf('%02d:%02d:%02d', $hrs, $mins, $secs);
+                $readableDuration = ($hrs > 0 ? "{$hrs}h {$mins}m" : "{$mins}m");
+                $media['duration'] = $readableDuration;
+                $media['total_duration'] = $formattedDuration;
+                $media['total_duration_seconds'] = $totalMovieSecs;
+            }
+
             $movieSeason = [
                 'id' => 1,
                 'series_id' => $media['id'],
@@ -178,6 +199,10 @@ switch ($action) {
                 'poster' => $media['poster'],
                 'total_episodes' => count($movieEpisodes),
                 'total_videos' => count($movieEpisodes),
+                'duration' => $media['duration'] ?? '2h',
+                'episodes' => $movieEpisodes,
+                'videos' => $movieEpisodes
+            ];
                 'episodes' => $movieEpisodes,
                 'videos' => $movieEpisodes
             ];

@@ -74,6 +74,27 @@ if ($found && !empty($found['video']['embed_url'])) {
     }
 }
 
+// Fallback: If authorized URL still uses raw ID (token was expired or not found), force refresh token and re-query
+if (strpos($authorizedEmbedUrl, 'video=' . $cleanId) !== false && $cleanId !== 'x992mce') {
+    $forceToken = getDmAccountToken($pdo, $accId, true);
+    if ($forceToken) {
+        $res = httpGetDailymotion("https://api.dailymotion.com/video/" . $cleanId . "?fields=id,title,embed_url,private", ["Authorization: Bearer " . $forceToken]);
+        if ($res) {
+            $dmJson = json_decode($res, true);
+            if (isset($dmJson['embed_url']) && !empty($dmJson['embed_url'])) {
+                $embed = $dmJson['embed_url'];
+                $embed = str_replace('/player.html', '/player/xtv3w.html', $embed);
+                if (strpos($embed, '/player/xtv3w.html') === false && preg_match('/video=([a-zA-Z0-9]+)/', $embed, $vm)) {
+                    $embed = "https://geo.dailymotion.com/player/xtv3w.html?video=" . $vm[1];
+                }
+                $authorizedEmbedUrl = $embed . (strpos($embed, '?') !== false ? '&' : '?') . $dmParams;
+                $video['title'] = $dmJson['title'] ?? $video['title'];
+                $token = $forceToken;
+            }
+        }
+    }
+}
+
 $video['embed_url'] = $authorizedEmbedUrl;
 $video['access_token'] = $token;
 
