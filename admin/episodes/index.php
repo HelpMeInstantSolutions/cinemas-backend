@@ -229,8 +229,20 @@ try {
             </div>
 
             <div>
-                <label class="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">Dailymotion Video ID / URL *</label>
-                <input type="text" id="epDmId" required placeholder="e.g. x8n0001 or full link https://www.dailymotion.com/video/x8n0001" class="w-full px-3.5 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-medium focus:outline-none focus:border-rose-500">
+                <label class="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5 flex items-center justify-between">
+                    <span>Dailymotion Video ID / URL *</span>
+                    <span id="fetchStatusBadge" class="text-[11px] font-semibold text-emerald-600 hidden"></span>
+                </label>
+                <div class="flex items-center gap-2">
+                    <input type="text" id="epDmId" required onblur="autoFetchIfEmpty()" placeholder="e.g. xbwbkmm or https://www.dailymotion.com/video/xbwbkmm" 
+                           class="flex-1 px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-medium focus:outline-none focus:border-rose-500 font-mono">
+                    <button type="button" id="btnFetchDm" onclick="fetchDailymotionDetails()" 
+                            class="px-4 py-2.5 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-xs font-bold transition flex items-center gap-1.5 shrink-0 shadow-sm">
+                        <i data-lucide="sparkles" class="w-3.5 h-3.5 text-amber-400"></i>
+                        <span>Auto-Fetch</span>
+                    </button>
+                </div>
+                <span class="text-[11px] text-slate-400 mt-1 block">💡 Enter ID (e.g. xbwbkmm) and click <strong>Auto-Fetch</strong> to automatically sync Video Title, Duration &amp; Account from Dailymotion.</span>
             </div>
 
             <div class="grid grid-cols-2 gap-4">
@@ -283,6 +295,8 @@ try {
     function openEpisodeModal() {
         document.getElementById('episodeId').value = 0;
         document.getElementById('episodeForm').reset();
+        var badge = document.getElementById('fetchStatusBadge');
+        if (badge) badge.classList.add('hidden');
         var curMedia = document.getElementById('mediaFilter').value;
         if (curMedia > 0) {
             document.getElementById('epMediaId').value = curMedia;
@@ -297,6 +311,59 @@ try {
         document.getElementById('episodeModal').classList.add('hidden');
     }
 
+    function autoFetchIfEmpty() {
+        var dmId = document.getElementById('epDmId').value.trim();
+        var curTitle = document.getElementById('epTitle').value.trim();
+        if (dmId.length >= 5 && (!curTitle || curTitle === '')) {
+            fetchDailymotionDetails();
+        }
+    }
+
+    async function fetchDailymotionDetails() {
+        var rawDm = document.getElementById('epDmId').value.trim();
+        if (!rawDm) {
+            showToast('Please enter a Dailymotion Video ID or URL first', 'error');
+            return;
+        }
+
+        var btn = document.getElementById('btnFetchDm');
+        var badge = document.getElementById('fetchStatusBadge');
+        var originalBtnHtml = btn.innerHTML;
+        btn.disabled = true;
+        btn.innerHTML = '<span class="inline-block animate-spin mr-1">⌛</span><span>Fetching...</span>';
+
+        var accId = document.getElementById('epDmAccountId') ? document.getElementById('epDmAccountId').value : 0;
+
+        try {
+            var url = '/api/admin_crud.php?action=fetch_dm_details&video_id=' + encodeURIComponent(rawDm) + '&account_id=' + accId;
+            var res = await fetch(url);
+            var json = await res.json();
+
+            if (json.status && json.data) {
+                var d = json.data;
+                if (d.id) document.getElementById('epDmId').value = d.id;
+                if (d.title) document.getElementById('epTitle').value = d.title;
+                if (d.duration) document.getElementById('epDuration').value = d.duration;
+                if (d.account_id && document.getElementById('epDmAccountId')) {
+                    document.getElementById('epDmAccountId').value = d.account_id;
+                }
+                showToast('✓ Synced with Dailymotion: ' + d.title + ' (' + d.duration + ')', 'success');
+                if (badge) {
+                    badge.classList.remove('hidden');
+                    badge.innerText = '✓ Synced (' + d.duration + ')';
+                }
+            } else {
+                showToast(json.message || 'Could not fetch video details from Dailymotion', 'error');
+            }
+        } catch (err) {
+            showToast('Error querying Dailymotion API: ' + (err.message || err), 'error');
+        } finally {
+            btn.disabled = false;
+            btn.innerHTML = originalBtnHtml;
+            if (window.lucide) lucide.createIcons();
+        }
+    }
+
     function editEpisode(e) {
         document.getElementById('episodeId').value = e.id;
         document.getElementById('epMediaId').value = e.series_id || e.course_id || '';
@@ -307,6 +374,9 @@ try {
         document.getElementById('epDmId').value = e.dailymotion_id || '';
         document.getElementById('epDmAccountId').value = e.dm_account_id || 1;
         document.getElementById('epDuration').value = e.duration || '45:00';
+
+        var badge = document.getElementById('fetchStatusBadge');
+        if (badge) badge.classList.add('hidden');
 
         document.getElementById('epModalTitle').innerText = 'Edit Video Stream';
         document.getElementById('btnSaveEp').innerText = 'Update Stream';
@@ -342,13 +412,13 @@ try {
             });
             var json = await res.json();
             if (json.status) {
-                showToast(json.message, 'success');
+                showToast(json.message || 'Stream saved successfully', 'success');
                 setTimeout(() => window.location.reload(), 600);
             } else {
                 showToast(json.message || 'Error saving video', 'error');
             }
         } catch (err) {
-            showToast('Network error while saving video', 'error');
+            showToast('Save error: ' + (err.message || 'Network error while saving video'), 'error');
         } finally {
             btn.disabled = false;
             btn.innerText = 'Save Stream';

@@ -306,6 +306,55 @@ switch ($action) {
         break;
 
     // -------------------------------------------------------------
+    // FETCH DETAILS FROM DAILYMOTION (Title, Duration, Thumbnail)
+    // -------------------------------------------------------------
+    case 'fetch_dm_details':
+        $rawDmId = trim($input['video_id'] ?? ($_GET['video_id'] ?? ''));
+        $accId = (int)($input['account_id'] ?? ($_GET['account_id'] ?? 0));
+
+        if (empty($rawDmId)) {
+            sendResponse(false, "Video ID or URL is required", null, 400);
+        }
+
+        $cleanId = $rawDmId;
+        if (preg_match('/(?:dailymotion\.com\/(?:video|hub)\/|dai\.ly\/)([a-zA-Z0-9]+)/', $rawDmId, $m)) {
+            $cleanId = $m[1];
+        }
+
+        $found = findDmAccountForVideo($pdo, $cleanId, $accId);
+        if (!$found || empty($found['video']['id'])) {
+            sendResponse(false, "Could not fetch details for video " . htmlspecialchars($cleanId) . ". Please verify the video ID or check your connected Dailymotion account.", null, 404);
+        }
+
+        $v = $found['video'];
+        $durSec = (int)($v['duration'] ?? 0);
+        $durFormatted = '45:00';
+        if ($durSec > 0) {
+            $hours = floor($durSec / 3600);
+            $mins = floor(($durSec % 3600) / 60);
+            $secs = $durSec % 60;
+            if ($hours > 0) {
+                $durFormatted = sprintf('%02d:%02d:%02d', $hours, $mins, $secs);
+            } else {
+                $durFormatted = sprintf('%02d:%02d', $mins, $secs);
+            }
+        }
+
+        $thumb = $v['thumbnail_720_url'] ?? ($v['thumbnail_large_url'] ?? ($v['thumbnail_url'] ?? ''));
+
+        sendResponse(true, "Video details retrieved successfully from Dailymotion", [
+            'id' => $cleanId,
+            'title' => $v['title'] ?? '',
+            'description' => $v['description'] ?? '',
+            'duration' => $durFormatted,
+            'duration_seconds' => $durSec,
+            'thumbnail' => $thumb,
+            'account_id' => $found['account']['id'] ?? 0,
+            'channel_name' => $found['account']['channel_name'] ?? ''
+        ]);
+        break;
+
+    // -------------------------------------------------------------
     // EPISODES SAVE
     // -------------------------------------------------------------
     case 'save_episode':
@@ -325,17 +374,44 @@ switch ($action) {
         $status = isset($_POST['status']) ? (int)$_POST['status'] : 1;
 
         if ($series_id <= 0 || empty($title) || empty($dailymotion_id)) {
-            sendResponse(false, "Series, Title, and Video/DM ID are required", null, 400);
+            sendResponse(false, "Series/Movie, Title, and Video/DM ID are required", null, 400);
         }
 
-        if ($id > 0) {
-            $stmt = $pdo->prepare("UPDATE episodes SET series_id=?, season_id=?, dm_account_id=?, episode_number=?, title=?, description=?, thumbnail=?, dailymotion_id=?, stream_url=?, duration=?, is_free_preview=?, status=? WHERE id=?");
-            $stmt->execute([$series_id, $season_id, $dm_account_id, $episode_number, $title, $description, $thumbnail, $dailymotion_id, $stream_url, $duration, $is_free_preview, $status, $id]);
-            sendResponse(true, "Video updated successfully", ['id' => $id]);
-        } else {
-            $stmt = $pdo->prepare("INSERT INTO episodes (series_id, season_id, dm_account_id, episode_number, title, description, thumbnail, dailymotion_id, stream_url, duration, is_free_preview, status) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
-            $stmt->execute([$series_id, $season_id, $dm_account_id, $episode_number, $title, $description, $thumbnail, $dailymotion_id, $stream_url, $duration, $is_free_preview, $status]);
-            sendResponse(true, "Video added successfully", ['id' => $pdo->lastInsertId()]);
+        // Clean Dailymotion ID if user pasted full URL
+        if (preg_match('/(?:dailymotion\.com\/(?:video|hub)\/|dai\.ly\/)([a-zA-Z0-9]+)/', $dailymotion_id, $m)) {
+            $dailymotion_id = $m[1];
+        }
+
+        // Handle Standalone Movie or Missing Season: Auto-link to existing season or create default 'Main Feature' season
+        if ($season_id <= 0) {
+            $sStmt = $pdo->prepare("SELECT id FROM seasons WHERE series_id = ? ORDER BY id ASC LIMIT 1");
+            $sStmt->execute([$series_id]);
+            $foundSeasonId = $sStmt->fetchColumn();
+            if ($foundSeasonId) {
+                $season_id = (int)$foundSeasonId;
+            } else {
+                $insSeason = $pdo->prepare("INSERT INTO seasons (series_id, season_number, title, description, status) VALUES (?, 1, 'Main Feature', 'Full movie / main release', 1)");
+                $insSeason->execute([$series_id]);
+                $season_id = (int)$pdo->lastInsertId();
+            }
+        }
+
+        if ($dm_account_id <= 0) {
+            $dm_account_id = (int)($pdo->query("SELECT id FROM dm_accounts WHERE status = 1 ORDER BY is_default DESC, id ASC LIMIT 1")->fetchColumn() ?: 1);
+        }
+
+        try {
+            if ($id > 0) {
+                $stmt = $pdo->prepare("UPDATE episodes SET series_id=?, season_id=?, dm_account_id=?, episode_number=?, title=?, description=?, thumbnail=?, dailymotion_id=?, stream_url=?, duration=?, is_free_preview=?, status=? WHERE id=?");
+                $stmt->execute([$series_id, $season_id, $dm_account_id, $episode_number, $title, $description, $thumbnail, $dailymotion_id, $stream_url, $duration, $is_free_preview, $status, $id]);
+                sendResponse(true, "Video updated successfully", ['id' => $id]);
+            } else {
+                $stmt = $pdo->prepare("INSERT INTO episodes (series_id, season_id, dm_account_id, episode_number, title, description, thumbnail, dailymotion_id, stream_url, duration, is_free_preview, status) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
+                $stmt->execute([$series_id, $season_id, $dm_account_id, $episode_number, $title, $description, $thumbnail, $dailymotion_id, $stream_url, $duration, $is_free_preview, $status]);
+                sendResponse(true, "Video added successfully", ['id' => $pdo->lastInsertId()]);
+            }
+        } catch (PDOException $e) {
+            sendResponse(false, "Database error: " . $e->getMessage(), null, 500);
         }
         break;
 

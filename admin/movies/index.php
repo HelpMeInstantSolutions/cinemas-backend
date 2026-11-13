@@ -235,10 +235,20 @@ try {
             </div>
 
             <div>
-                <label class="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">Dailymotion Video ID (Optional single-link)</label>
-                <input type="text" id="movieDmId" placeholder="e.g. x8n0001 (or leave blank and add multi-part links in Episodes)" 
-                       class="w-full px-3.5 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-medium focus:outline-none focus:border-rose-500">
-                <span class="text-[11px] text-slate-400 mt-1 block">💡 If your movie is split into 2 or more Dailymotion links, leave this blank and add them inside "Episodes & Streams" — the app will play them as one seamless movie automatically!</span>
+                <label class="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5 flex items-center justify-between">
+                    <span>Dailymotion Video ID / URL (Optional single-link)</span>
+                    <span id="movieDmFetchStatus" class="text-[11px] font-semibold text-emerald-600 hidden"></span>
+                </label>
+                <div class="flex items-center gap-2">
+                    <input type="text" id="movieDmId" placeholder="e.g. xbwbkmm or https://www.dailymotion.com/video/xbwbkmm" 
+                           class="flex-1 px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-medium focus:outline-none focus:border-rose-500 font-mono">
+                    <button type="button" id="btnMovieFetchDm" onclick="fetchMovieDetailsFromDm()" 
+                            class="px-4 py-2.5 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-xs font-bold transition flex items-center gap-1.5 shrink-0 shadow-sm">
+                        <i data-lucide="sparkles" class="w-3.5 h-3.5 text-amber-400"></i>
+                        <span>Auto-Fetch</span>
+                    </button>
+                </div>
+                <span class="text-[11px] text-slate-400 mt-1 block">💡 Enter ID and click <strong>Auto-Fetch</strong> to automatically fill title, duration &amp; poster from Dailymotion. Or if your movie is split into 2+ parts, leave blank and add them inside Episodes &amp; Streams!</span>
             </div>
 
             <div class="flex items-center justify-end gap-3 pt-4 border-t border-slate-100">
@@ -274,6 +284,50 @@ try {
 
     function closeMovieModal() {
         document.getElementById('movieModal').classList.add('hidden');
+    }
+
+    async function fetchMovieDetailsFromDm() {
+        var rawDm = document.getElementById('movieDmId').value.trim();
+        if (!rawDm) {
+            showToast('Please enter a Dailymotion Video ID or URL first', 'error');
+            return;
+        }
+
+        var btn = document.getElementById('btnMovieFetchDm');
+        var badge = document.getElementById('movieDmFetchStatus');
+        var origHtml = btn.innerHTML;
+        btn.disabled = true;
+        btn.innerHTML = '<span class="inline-block animate-spin mr-1">⌛</span><span>Fetching...</span>';
+
+        try {
+            var url = '/api/admin_crud.php?action=fetch_dm_details&video_id=' + encodeURIComponent(rawDm);
+            var res = await fetch(url);
+            var json = await res.json();
+
+            if (json.status && json.data) {
+                var d = json.data;
+                if (d.id) document.getElementById('movieDmId').value = d.id;
+                if (d.title && !document.getElementById('movieTitle').value) document.getElementById('movieTitle').value = d.title;
+                if (d.description && !document.getElementById('movieDesc').value) document.getElementById('movieDesc').value = d.description;
+                if (d.duration) document.getElementById('movieDuration').value = d.duration;
+                if (d.thumbnail && !document.getElementById('moviePoster').value) document.getElementById('moviePoster').value = d.thumbnail;
+                if (d.thumbnail && !document.getElementById('movieBackdrop').value) document.getElementById('movieBackdrop').value = d.thumbnail;
+
+                showToast('✓ Synced details: ' + d.title + ' (' + d.duration + ')', 'success');
+                if (badge) {
+                    badge.classList.remove('hidden');
+                    badge.innerText = '✓ Synced (' + d.duration + ')';
+                }
+            } else {
+                showToast(json.message || 'Could not fetch details from Dailymotion', 'error');
+            }
+        } catch (err) {
+            showToast('Error querying Dailymotion: ' + (err.message || err), 'error');
+        } finally {
+            btn.disabled = false;
+            btn.innerHTML = origHtml;
+            if (window.lucide) lucide.createIcons();
+        }
     }
 
     function editMovie(item) {

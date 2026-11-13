@@ -218,6 +218,145 @@ function httpGetDailymotion($url, $headers = []) {
     return $res;
 }
 
+/**
+ * Refresh an individual Dailymotion account's access token using its refresh_token.
+ */
+function refreshDmAccount($pdo, &$account, $forceRefresh = false) {
+    if (!$account || empty($account['refresh_token'])) {
+        return null;
+    }
+
+    $now = time();
+    $expiresAt = (int)($account['expires_at'] ?? 0);
+    $needsRefresh = $forceRefresh || ($expiresAt === 0) || ($now >= ($expiresAt - 300));
+
+    if (!$needsRefresh && !empty($account['access_token'])) {
+        return $account['access_token'];
+    }
+
+    $postData = http_build_query([
+        'grant_type' => 'refresh_token',
+        'client_id' => $account['client_id'],
+        'client_secret' => $account['client_secret'],
+        'refresh_token' => $account['refresh_token']
+    ]);
+
+    $res = httpPostDailymotion('https://api.dailymotion.com/oauth/token', $postData);
+
+    if ($res) {
+        $newTokens = json_decode($res, true);
+        if (!empty($newTokens['access_token'])) {
+            $account['access_token'] = $newTokens['access_token'];
+            if (!empty($newTokens['refresh_token'])) {
+                $account['refresh_token'] = $newTokens['refresh_token'];
+            }
+            $expiresIn = (int)($newTokens['expires_in'] ?? 36000);
+            $account['expires_at'] = $now + $expiresIn;
+
+            if (isset($account['id']) && $pdo) {
+                try {
+                    $up = $pdo->prepare("UPDATE dm_accounts SET access_token = ?, refresh_token = ?, expires_at = ? WHERE id = ?");
+                    $up->execute([$account['access_token'], $account['refresh_token'], $account['expires_at'], $account['id']]);
+                } catch (Exception $e) {}
+            }
+
+            if (!empty($account['is_default'])) {
+                $tokenFile = __DIR__ . '/../database/dm_user_token.json';
+                @file_put_contents($tokenFile, json_encode($account, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
+            }
+
+            return $account['access_token'];
+        }
+    }
+
+    return $account['access_token'] ?? null;
+}
+
+/**
+ * Get access token for a specific account or default account
+ */
+function getDmAccountToken($pdo, $accountId = null, $forceRefresh = false) {
+    if (!$pdo) return null;
+
+    try {
+        if ($accountId && $accountId > 0) {
+            $stmt = $pdo->prepare("SELECT * FROM dm_accounts WHERE id = ? AND status = 1");
+            $stmt->execute([$accountId]);
+            $acc = $stmt->fetch();
+            if ($acc) {
+                return refreshDmAccount($pdo, $acc, $forceRefresh);
+            }
+        }
+
+        // Get default or first active account
+        $stmt = $pdo->query("SELECT * FROM dm_accounts WHERE status = 1 ORDER BY is_default DESC, id ASC LIMIT 1");
+        $acc = $stmt ? $stmt->fetch() : null;
+        if ($acc) {
+            return refreshDmAccount($pdo, $acc, $forceRefresh);
+        }
+    } catch (Exception $e) {}
+
+    return null;
+}
+
+/**
+ * Query Dailymotion across connected accounts for video details (title, duration, thumbnail, embed_url, etc.)
+ */
+function findDmAccountForVideo($pdo, $videoId, $preferredAccountId = 0) {
+    $cleanId = $videoId;
+    if (preg_match('/(?:dailymotion\.com\/(?:video|hub)\/|dai\.ly\/)([a-zA-Z0-9]+)/', $videoId, $m)) {
+        $cleanId = $m[1];
+    }
+
+    $accounts = [];
+    if ($pdo) {
+        try {
+            $stmt = $pdo->query("SELECT * FROM dm_accounts WHERE status = 1 ORDER BY is_default DESC, id ASC");
+            $accounts = $stmt->fetchAll();
+        } catch (Exception $e) {}
+    }
+
+    if ($preferredAccountId > 0) {
+        usort($accounts, function($a, $b) use ($preferredAccountId) {
+            if ($a['id'] == $preferredAccountId) return -1;
+            if ($b['id'] == $preferredAccountId) return 1;
+            return 0;
+        });
+    }
+
+    $queryOne = function($vid, $token) {
+        $url = "https://api.dailymotion.com/video/" . $vid . "?fields=id,title,description,duration,thumbnail_720_url,thumbnail_large_url,thumbnail_url,private,embed_url";
+        $headers = $token ? ["Authorization: Bearer " . $token] : [];
+        $res = httpGetDailymotion($url, $headers);
+        return $res ? json_decode($res, true) : null;
+    };
+
+    // Try each account in pool
+    foreach ($accounts as $acc) {
+        $token = refreshDmAccount($pdo, $acc);
+        $vJson = $queryOne($cleanId, $token);
+        if ($vJson && isset($vJson['id']) && !isset($vJson['error'])) {
+            return [
+                'account' => $acc,
+                'video' => $vJson,
+                'token' => $token
+            ];
+        }
+    }
+
+    // Fallback: try unauthenticated (public video)
+    $pubJson = $queryOne($cleanId, null);
+    if ($pubJson && isset($pubJson['id']) && !isset($pubJson['error'])) {
+        return [
+            'account' => null,
+            'video' => $pubJson,
+            'token' => null
+        ];
+    }
+
+    return null;
+}
+
 function getAppStats($pdo) {
     try {
         $genres = $pdo->query("SELECT COUNT(*) FROM genres WHERE status = 1")->fetchColumn();
