@@ -167,58 +167,6 @@ function initDatabase($pdo) {
             $gStmt->execute([$g[0], $g[1]]);
         }
     }
-
-    // Insert Sample Movie and Web Series if empty
-    $mCount = $pdo->query("SELECT COUNT(*) FROM media_items")->fetchColumn();
-    if ($mCount == 0) {
-        // Sample Movie
-        $insMovie = $pdo->prepare("INSERT INTO media_items (type, genre_id, title, description, poster, backdrop, release_year, duration, rating, language, dailymotion_id, is_featured) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
-        $insMovie->execute([
-            'movie',
-            1,
-            'Jawan: Extended Cut',
-            'A high-octane action thriller detailing an emotional journey of a man who is set to rectify the wrongs in the society.',
-            'https://images.unsplash.com/photo-1536440136628-849c177e76a1?w=600&auto=format&fit=crop&q=80',
-            'https://images.unsplash.com/photo-1574267432553-4b4628081c31?w=1200&auto=format&fit=crop&q=80',
-            '2023',
-            '2h 45m',
-            '8.8',
-            'Hindi',
-            'x8n0001',
-            1
-        ]);
-
-        // Sample Web Series
-        $insMovie->execute([
-            'series',
-            4,
-            'Mirzapur: Season of Vengeance',
-            'A shocking incident at a wedding procession ignites a series of events entangling the lives of two families in the lawless city of Mirzapur.',
-            'https://images.unsplash.com/photo-1616530940355-351fabd9524b?w=600&auto=format&fit=crop&q=80',
-            'https://images.unsplash.com/photo-1518676590629-3dcbd9c5a5c9?w=1200&auto=format&fit=crop&q=80',
-            '2024',
-            '3 Seasons',
-            '9.1',
-            'Hindi',
-            '',
-            1
-        ]);
-        $seriesId = $pdo->lastInsertId();
-
-        // Sample Seasons
-        $insSeason = $pdo->prepare("INSERT INTO seasons (series_id, season_number, title, description, poster) VALUES (?, ?, ?, ?, ?)");
-        $insSeason->execute([$seriesId, 1, 'Season 1: Rule of Akhandanand', 'The rise of Kaleen Bhaiya and the conflict with Guddu & Bablu.', 'https://images.unsplash.com/photo-1616530940355-351fabd9524b?w=600&auto=format&fit=crop&q=80']);
-        $season1Id = $pdo->lastInsertId();
-
-        $insSeason->execute([$seriesId, 2, 'Season 2: Retribution', 'Blood boils and empires clash for total control of Purvanchal.', 'https://images.unsplash.com/photo-1616530940355-351fabd9524b?w=600&auto=format&fit=crop&q=80']);
-        $season2Id = $pdo->lastInsertId();
-
-        // Sample Episodes
-        $insEp = $pdo->prepare("INSERT INTO episodes (series_id, season_id, episode_number, title, description, thumbnail, dailymotion_id, duration, is_free_preview) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)");
-        $insEp->execute([$seriesId, $season1Id, 1, 'Episode 1: Bhaukaal', 'Akhandanand Tripathi is a carpet exporter and the mafia don of Mirzapur.', 'https://images.unsplash.com/photo-1518676590629-3dcbd9c5a5c9?w=600&auto=format&fit=crop&q=80', 'x8n0002', '48:10', 1]);
-        $insEp->execute([$seriesId, $season1Id, 2, 'Episode 2: Gaddi', 'Guddu and Bablu must decide where their true loyalty lies.', 'https://images.unsplash.com/photo-1518676590629-3dcbd9c5a5c9?w=600&auto=format&fit=crop&q=80', 'x8n0003', '52:15', 0]);
-        $insEp->execute([$seriesId, $season2Id, 1, 'Episode 1: Dhenkul', 'The war begins anew as surviving factions regroup for vengeance.', 'https://images.unsplash.com/photo-1518676590629-3dcbd9c5a5c9?w=600&auto=format&fit=crop&q=80', 'x8n0004', '56:00', 1]);
-    }
 }
 
 function sendResponse($status, $message, $data = null, $code = 200) {
@@ -236,9 +184,38 @@ function requireAdminAuth($pdo) {
     if (session_status() === PHP_SESSION_NONE) {
         session_start();
     }
-    if (!isset($_SESSION['admin_id'])) {
+    // Accept either admin_logged session or admin_id
+    if (!isset($_SESSION['admin_logged']) && !isset($_SESSION['admin_id'])) {
         sendResponse(false, 'Unauthorized. Please login.', null, 401);
     }
+}
+
+function httpPostDailymotion($url, $postFields, $headers = []) {
+    $ch = curl_init($url);
+    curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+    curl_setopt($ch, CURLOPT_POST, true);
+    curl_setopt($ch, CURLOPT_POSTFIELDS, $postFields);
+    curl_setopt($ch, CURLOPT_TIMEOUT, 15);
+    curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
+    if (!empty($headers)) {
+        curl_setopt($ch, CURLOPT_HTTPHEADER, $headers);
+    }
+    $res = curl_exec($ch);
+    curl_close($ch);
+    return $res;
+}
+
+function httpGetDailymotion($url, $headers = []) {
+    $ch = curl_init($url);
+    curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+    curl_setopt($ch, CURLOPT_TIMEOUT, 15);
+    curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
+    if (!empty($headers)) {
+        curl_setopt($ch, CURLOPT_HTTPHEADER, $headers);
+    }
+    $res = curl_exec($ch);
+    curl_close($ch);
+    return $res;
 }
 
 function getAppStats($pdo) {
