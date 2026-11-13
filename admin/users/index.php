@@ -1,9 +1,9 @@
 <?php
 // backend/admin/users/index.php
-$pageTitle = 'Enrolled Students';
+$pageTitle = 'Subscribers & Users';
 $activePage = 'users';
-$headerTitle = 'Enrolled Students Roster';
-$headerSubtitle = 'Mobile app registered accounts and student activity management';
+$headerTitle = 'Subscribers & Mobile Users';
+$headerSubtitle = 'Mobile app registered accounts and viewing access management';
 
 require_once __DIR__ . '/../includes/header.php';
 require_once __DIR__ . '/../includes/sidebar.php';
@@ -16,7 +16,7 @@ try {
 } catch (Exception $e) {}
 ?>
 
-<!-- MAIN CONTENT WRAPPER (INDEPENDENT SCROLL) -->
+<!-- MAIN CONTENT WRAPPER -->
 <div class="flex-1 h-full overflow-y-auto flex flex-col min-w-0 bg-slate-50 relative">
     <?php require_once __DIR__ . '/../includes/navbar.php'; ?>
 
@@ -26,25 +26,25 @@ try {
             <div class="relative flex-1 max-w-md w-full">
                 <i data-lucide="search" class="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400"></i>
                 <input type="text" id="userSearch" oninput="filterUsers()" 
-                       placeholder="Search by student name, email, or mobile..." 
-                       class="w-full pl-10 pr-4 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs focus:outline-none focus:border-indigo-500 focus:bg-white transition">
+                       placeholder="Search by user name, email, or mobile..." 
+                       class="w-full pl-10 pr-4 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs focus:outline-none focus:border-rose-500 focus:bg-white transition">
             </div>
 
             <div class="flex items-center gap-2">
                 <span class="text-xs font-semibold text-slate-500 bg-slate-100 px-3 py-1.5 rounded-xl">
-                    Total Students: <strong class="text-slate-800"><?= count($users) ?></strong>
+                    Total Subscribers: <strong class="text-slate-800"><?= count($users) ?></strong>
                 </span>
             </div>
         </div>
 
-        <!-- Students Table (Light Theme) -->
+        <!-- Users Table -->
         <div class="bg-white rounded-2xl border border-slate-200/80 shadow-sm overflow-hidden">
             <div class="overflow-x-auto">
                 <table class="w-full text-left text-xs" id="usersTable">
                     <thead class="bg-slate-50 border-b border-slate-200 text-slate-500 font-bold uppercase tracking-wider text-[11px]">
                         <tr>
                             <th class="py-3.5 px-4 w-12 text-center">ID</th>
-                            <th class="py-3.5 px-4">Student</th>
+                            <th class="py-3.5 px-4">User</th>
                             <th class="py-3.5 px-4">Email Address</th>
                             <th class="py-3.5 px-4">Phone Number</th>
                             <th class="py-3.5 px-4">Joined Date</th>
@@ -59,7 +59,7 @@ try {
                                     <div class="w-12 h-12 bg-slate-100 text-slate-400 rounded-2xl flex items-center justify-center mx-auto mb-3">
                                         <i data-lucide="users" class="w-6 h-6"></i>
                                     </div>
-                                    <p class="font-bold text-slate-700 text-sm">No registered students found</p>
+                                    <p class="font-bold text-slate-700 text-sm">No registered subscribers yet</p>
                                     <p class="text-xs text-slate-400 mt-1">Users will appear here once they register via the mobile app.</p>
                                 </td>
                             </tr>
@@ -74,12 +74,12 @@ try {
                                     </td>
                                     <td class="py-3.5 px-4">
                                         <div class="flex items-center gap-3">
-                                            <div class="w-9 h-9 rounded-full bg-gradient-to-tr from-indigo-500 to-brand-500 text-white flex items-center justify-center font-bold text-xs uppercase shadow-sm">
-                                                <?= substr($u['name'] ?? 'S', 0, 1) ?>
+                                            <div class="w-9 h-9 rounded-full bg-gradient-to-tr from-rose-500 to-amber-500 text-white flex items-center justify-center font-bold text-xs uppercase shadow-sm">
+                                                <?= substr($u['name'] ?? 'U', 0, 1) ?>
                                             </div>
                                             <div class="truncate">
                                                 <p class="font-bold text-slate-900 truncate"><?= htmlspecialchars($u['name']) ?></p>
-                                                <span class="text-[10px] text-slate-400">App Student</span>
+                                                <span class="text-[10px] text-slate-400">Cinemas User</span>
                                             </div>
                                         </div>
                                     </td>
@@ -98,8 +98,8 @@ try {
                                         </span>
                                     </td>
                                     <td class="py-3.5 px-4 text-right">
-                                        <button onclick="deleteStudent(<?= $u['id'] ?>, '<?= addslashes(htmlspecialchars($u['name'])) ?>')" 
-                                                title="Delete Student" 
+                                        <button onclick="deleteUser(<?= $u['id'] ?>, '<?= addslashes(htmlspecialchars($u['name'])) ?>')" 
+                                                title="Delete User" 
                                                 class="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition">
                                             <i data-lucide="trash-2" class="w-4 h-4"></i>
                                         </button>
@@ -130,8 +130,8 @@ try {
         });
     }
 
-    async function deleteStudent(id, name) {
-        if (!confirm('Are you sure you want to remove student account "' + name + '"?')) return;
+    async function deleteUser(id, name) {
+        if (!confirm('Are you sure you want to remove user account "' + name + '"?')) return;
 
         try {
             var res = await fetch('/api/admin_crud.php?action=delete_user', {
@@ -144,10 +144,10 @@ try {
                 showToast(json.message, 'success');
                 setTimeout(() => window.location.reload(), 800);
             } else {
-                showToast(json.message || 'Failed to delete student', 'error');
+                showToast(json.message || 'Failed to delete user', 'error');
             }
         } catch (e) {
-            showToast('Network error while deleting student', 'error');
+            showToast('Network error while deleting user', 'error');
         }
     }
 </script>

@@ -162,7 +162,7 @@ $oneClickAuthUrl = "https://api.dailymotion.com/oauth/authorize?response_type=co
                                         </span>
                                     </td>
                                     <td class="py-3.5 px-4">
-                                        <a href="/admin/videos/?account_id=<?= $acc['id'] ?>" class="inline-flex items-center gap-1 font-semibold text-[11px] text-emerald-700 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-full hover:bg-emerald-100 transition">
+                                        <a href="/admin/episodes/?account_id=<?= $acc['id'] ?>" class="inline-flex items-center gap-1 font-semibold text-[11px] text-emerald-700 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-full hover:bg-emerald-100 transition">
                                             <i data-lucide="film" class="w-3 h-3"></i>
                                             <?= (int)$acc['video_count'] ?> Videos
                                         </a>
@@ -566,5 +566,6 @@ $oneClickAuthUrl = "https://api.dailymotion.com/oauth/authorize?response_type=co
 </script>
 
 <?php require_once __DIR__ . '/../includes/footer.php'; ?>
+
 
 

@@ -1,4 +1,4 @@
-<?php
+﻿<?php
 // backend/admin/index.php
 $pageTitle = 'Cinemas Dashboard';
 $activePage = 'dashboard';
@@ -40,7 +40,7 @@ try {
         <!-- Metric Cards -->
         <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
             <!-- Card 1: Movies -->
-            <a href="/admin/courses/" class="bg-slate-900 rounded-2xl p-5 border border-slate-800 shadow-sm hover:border-rose-500/50 transition group block">
+            <a href="/admin/movies/" class="bg-slate-900 rounded-2xl p-5 border border-slate-800 shadow-sm hover:border-rose-500/50 transition group block">
                 <div class="flex items-center justify-between">
                     <span class="text-xs font-bold text-slate-400 uppercase tracking-wider">Movies</span>
                     <div class="w-10 h-10 rounded-xl bg-rose-500/10 text-rose-500 flex items-center justify-center group-hover:scale-105 transition">
@@ -56,7 +56,7 @@ try {
             </a>
 
             <!-- Card 2: Web Series -->
-            <a href="/admin/courses/" class="bg-slate-900 rounded-2xl p-5 border border-slate-800 shadow-sm hover:border-amber-500/50 transition group block">
+            <a href="/admin/movies/" class="bg-slate-900 rounded-2xl p-5 border border-slate-800 shadow-sm hover:border-amber-500/50 transition group block">
                 <div class="flex items-center justify-between">
                     <span class="text-xs font-bold text-slate-400 uppercase tracking-wider">Web Series</span>
                     <div class="w-10 h-10 rounded-xl bg-amber-500/10 text-amber-500 flex items-center justify-center group-hover:scale-105 transition">
@@ -72,7 +72,7 @@ try {
             </a>
 
             <!-- Card 3: Episodes -->
-            <a href="/admin/videos/" class="bg-slate-900 rounded-2xl p-5 border border-slate-800 shadow-sm hover:border-emerald-500/50 transition group block">
+            <a href="/admin/episodes/" class="bg-slate-900 rounded-2xl p-5 border border-slate-800 shadow-sm hover:border-emerald-500/50 transition group block">
                 <div class="flex items-center justify-between">
                     <span class="text-xs font-bold text-slate-400 uppercase tracking-wider">Episodes</span>
                     <div class="w-10 h-10 rounded-xl bg-emerald-500/10 text-emerald-500 flex items-center justify-center group-hover:scale-105 transition">
@@ -127,7 +127,7 @@ try {
                     <h3 class="text-lg font-bold text-white">Featured Movies &amp; Series</h3>
                     <p class="text-xs text-slate-400">Latest media entries available on the mobile application</p>
                 </div>
-                <a href="/admin/courses/?new=1" class="px-4 py-2 bg-rose-600 hover:bg-rose-500 text-white rounded-xl text-xs font-bold transition flex items-center gap-1.5 shadow-md shadow-rose-600/30">
+                <a href="/admin/movies/?new=1" class="px-4 py-2 bg-rose-600 hover:bg-rose-500 text-white rounded-xl text-xs font-bold transition flex items-center gap-1.5 shadow-md shadow-rose-600/30">
                     <i data-lucide="plus" class="w-4 h-4"></i> Add Title
                 </a>
             </div>
@@ -170,3 +170,4 @@ try {
 </div>
 
 <?php require_once __DIR__ . '/includes/footer.php'; ?>
+

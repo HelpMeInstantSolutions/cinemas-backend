@@ -1,4 +1,4 @@
-<?php
+﻿<?php
 // backend/admin/includes/sidebar.php
 $activePage = $activePage ?? 'dashboard';
 ?>
@@ -32,31 +32,31 @@ $activePage = $activePage ?? 'dashboard';
         </a>
 
         <!-- Movies & Series Link -->
-        <a href="/admin/courses/" 
-           class="flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-sm font-medium transition-all duration-150 <?= $activePage === 'courses' ? 'bg-rose-600/20 text-rose-400 font-semibold border-r-4 border-rose-500' : 'text-slate-300 hover:text-white hover:bg-slate-800/60' ?>">
-            <i data-lucide="film" class="w-4 h-4 <?= $activePage === 'courses' ? 'text-rose-400' : 'text-slate-400' ?>"></i>
+        <a href="/admin/movies/" 
+           class="flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-sm font-medium transition-all duration-150 <?= $activePage === 'movies' ? 'bg-rose-600/20 text-rose-400 font-semibold border-r-4 border-rose-500' : 'text-slate-300 hover:text-white hover:bg-slate-800/60' ?>">
+            <i data-lucide="film" class="w-4 h-4 <?= $activePage === 'movies' ? 'text-rose-400' : 'text-slate-400' ?>"></i>
             <span class="flex-1">Movies &amp; Series</span>
-            <span class="text-xs font-semibold px-2 py-0.5 rounded-full <?= $activePage === 'courses' ? 'bg-rose-500/20 text-rose-300' : 'bg-slate-800 text-slate-400' ?>">
+            <span class="text-xs font-semibold px-2 py-0.5 rounded-full <?= $activePage === 'movies' ? 'bg-rose-500/20 text-rose-300' : 'bg-slate-800 text-slate-400' ?>">
                 <?= $serverStats['movies'] ?? 0 ?>M / <?= $serverStats['series'] ?? 0 ?>S
             </span>
         </a>
 
         <!-- Seasons Link -->
-        <a href="/admin/chapters/" 
-           class="flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-sm font-medium transition-all duration-150 <?= $activePage === 'chapters' ? 'bg-rose-600/20 text-rose-400 font-semibold border-r-4 border-rose-500' : 'text-slate-300 hover:text-white hover:bg-slate-800/60' ?>">
-            <i data-lucide="layers" class="w-4 h-4 <?= $activePage === 'chapters' ? 'text-rose-400' : 'text-slate-400' ?>"></i>
+        <a href="/admin/seasons/" 
+           class="flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-sm font-medium transition-all duration-150 <?= $activePage === 'seasons' ? 'bg-rose-600/20 text-rose-400 font-semibold border-r-4 border-rose-500' : 'text-slate-300 hover:text-white hover:bg-slate-800/60' ?>">
+            <i data-lucide="layers" class="w-4 h-4 <?= $activePage === 'seasons' ? 'text-rose-400' : 'text-slate-400' ?>"></i>
             <span class="flex-1">Seasons</span>
-            <span class="text-xs font-semibold px-2 py-0.5 rounded-full <?= $activePage === 'chapters' ? 'bg-rose-500/20 text-rose-300' : 'bg-slate-800 text-slate-400' ?>">
+            <span class="text-xs font-semibold px-2 py-0.5 rounded-full <?= $activePage === 'seasons' ? 'bg-rose-500/20 text-rose-300' : 'bg-slate-800 text-slate-400' ?>">
                 <?= $serverStats['series'] ?? 0 ?>
             </span>
         </a>
 
         <!-- Episodes Link -->
-        <a href="/admin/videos/" 
-           class="flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-sm font-medium transition-all duration-150 <?= $activePage === 'videos' ? 'bg-rose-600/20 text-rose-400 font-semibold border-r-4 border-rose-500' : 'text-slate-300 hover:text-white hover:bg-slate-800/60' ?>">
-            <i data-lucide="play-square" class="w-4 h-4 <?= $activePage === 'videos' ? 'text-rose-400' : 'text-slate-400' ?>"></i>
+        <a href="/admin/episodes/" 
+           class="flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-sm font-medium transition-all duration-150 <?= $activePage === 'episodes' ? 'bg-rose-600/20 text-rose-400 font-semibold border-r-4 border-rose-500' : 'text-slate-300 hover:text-white hover:bg-slate-800/60' ?>">
+            <i data-lucide="play-square" class="w-4 h-4 <?= $activePage === 'episodes' ? 'text-rose-400' : 'text-slate-400' ?>"></i>
             <span class="flex-1">Episodes &amp; Streams</span>
-            <span class="text-xs font-semibold px-2 py-0.5 rounded-full <?= $activePage === 'videos' ? 'bg-rose-500/20 text-rose-300' : 'bg-slate-800 text-slate-400' ?>">
+            <span class="text-xs font-semibold px-2 py-0.5 rounded-full <?= $activePage === 'episodes' ? 'bg-rose-500/20 text-rose-300' : 'bg-slate-800 text-slate-400' ?>">
                 <?= $serverStats['episodes'] ?? 0 ?>
             </span>
         </a>
@@ -83,15 +83,15 @@ $activePage = $activePage ?? 'dashboard';
 
         <div class="pt-4 pb-2">
             <p class="px-3 text-[11px] font-bold uppercase tracking-wider text-slate-400 mb-2">Shortcuts</p>
-            <a href="/admin/courses/?new=1" class="flex items-center gap-3 px-3.5 py-2 rounded-xl text-xs font-medium text-slate-300 hover:text-rose-400 hover:bg-rose-500/10 transition">
+            <a href="/admin/movies/?new=1" class="flex items-center gap-3 px-3.5 py-2 rounded-xl text-xs font-medium text-slate-300 hover:text-rose-400 hover:bg-rose-500/10 transition">
                 <i data-lucide="plus-circle" class="w-3.5 h-3.5 text-rose-500"></i>
                 <span>Add Movie / Series</span>
             </a>
-            <a href="/admin/chapters/?new=1" class="flex items-center gap-3 px-3.5 py-2 rounded-xl text-xs font-medium text-slate-300 hover:text-amber-400 hover:bg-amber-500/10 transition">
+            <a href="/admin/seasons/?new=1" class="flex items-center gap-3 px-3.5 py-2 rounded-xl text-xs font-medium text-slate-300 hover:text-amber-400 hover:bg-amber-500/10 transition">
                 <i data-lucide="folder-plus" class="w-3.5 h-3.5 text-amber-500"></i>
                 <span>Create New Season</span>
             </a>
-            <a href="/admin/videos/?new=1" class="flex items-center gap-3 px-3.5 py-2 rounded-xl text-xs font-medium text-slate-300 hover:text-emerald-400 hover:bg-emerald-500/10 transition">
+            <a href="/admin/episodes/?new=1" class="flex items-center gap-3 px-3.5 py-2 rounded-xl text-xs font-medium text-slate-300 hover:text-emerald-400 hover:bg-emerald-500/10 transition">
                 <i data-lucide="tv" class="w-3.5 h-3.5 text-emerald-500"></i>
                 <span>Upload Episode Stream</span>
             </a>
@@ -115,3 +115,4 @@ $activePage = $activePage ?? 'dashboard';
         </a>
     </div>
 </aside>
+

@@ -131,23 +131,41 @@ switch ($action) {
             $media['seasons'] = $groupedSeasons;
             $media['chapters'] = $groupedSeasons; // For Kotlin ChapterAdapter
         } else {
-            // Standalone Movie
-            $movieLesson = [
-                'id' => $media['id'],
-                'course_id' => $media['id'],
-                'chapter_id' => 1,
-                'series_id' => $media['id'],
-                'season_id' => 1,
-                'episode_number' => 1,
-                'sort_order' => 1,
-                'title' => $media['title'] . ' (Full Movie)',
-                'description' => $media['description'],
-                'dailymotion_id' => $media['dailymotion_id'],
-                'stream_url' => $media['stream_url'],
-                'thumbnail' => $media['poster'],
-                'duration' => $media['duration'],
-                'is_free_preview' => 1
-            ];
+            // Standalone Movie: Check if multiple stream links/parts exist in episodes table
+            $epStmt = $pdo->prepare("SELECT id, series_id, season_id, episode_number, title, description, thumbnail, dailymotion_id, duration, is_free_preview 
+                                     FROM episodes 
+                                     WHERE series_id = ? AND status = 1 
+                                     ORDER BY episode_number ASC, id ASC");
+            $epStmt->execute([$id]);
+            $parts = $epStmt->fetchAll();
+
+            $movieEpisodes = [];
+            if (!empty($parts)) {
+                foreach ($parts as $p) {
+                    $p['course_id'] = $p['series_id'];
+                    $p['chapter_id'] = 1;
+                    $p['sort_order'] = $p['episode_number'];
+                    if (empty($p['thumbnail'])) $p['thumbnail'] = $media['poster'];
+                    $movieEpisodes[] = $p;
+                }
+            } else if (!empty($media['dailymotion_id'])) {
+                $movieEpisodes[] = [
+                    'id' => $media['id'],
+                    'course_id' => $media['id'],
+                    'chapter_id' => 1,
+                    'series_id' => $media['id'],
+                    'season_id' => 1,
+                    'episode_number' => 1,
+                    'sort_order' => 1,
+                    'title' => $media['title'] . ' (Full Movie)',
+                    'description' => $media['description'],
+                    'dailymotion_id' => $media['dailymotion_id'],
+                    'stream_url' => $media['stream_url'],
+                    'thumbnail' => $media['poster'],
+                    'duration' => $media['duration'],
+                    'is_free_preview' => 1
+                ];
+            }
 
             $movieSeason = [
                 'id' => 1,
@@ -158,10 +176,10 @@ switch ($action) {
                 'title' => 'Main Feature',
                 'description' => 'Full Length Movie',
                 'poster' => $media['poster'],
-                'total_episodes' => 1,
-                'total_videos' => 1,
-                'episodes' => [$movieLesson],
-                'videos' => [$movieLesson]
+                'total_episodes' => count($movieEpisodes),
+                'total_videos' => count($movieEpisodes),
+                'episodes' => $movieEpisodes,
+                'videos' => $movieEpisodes
             ];
 
             $media['seasons'] = [$movieSeason];

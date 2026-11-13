@@ -128,21 +128,4 @@ INSERT INTO `dm_accounts` (`id`, `name`, `channel_name`, `uid`, `email`, `client
 VALUES (1, 'Cinemas Master Streamer', 'neniyo7267', 'x6mtvoi', 'neniyo7267@artegin.com', '20339e78eaa0487f12ea', 'd416efc0eddc6d29e1900833176cbddb5373a1e3', 'd84f059ff876d79d93e091c2ffab5fc390a7dce7', 'bnhdJjMwPRlcJi4nPyUfHggHAgA1QwUYMnYHB1IlKQw-', 1794623595, 1, 1)
 ON DUPLICATE KEY UPDATE `channel_name`='neniyo7267', `uid`='x6mtvoi', `email`='neniyo7267@artegin.com', `client_id`='20339e78eaa0487f12ea', `client_secret`='d416efc0eddc6d29e1900833176cbddb5373a1e3', `refresh_token`='d84f059ff876d79d93e091c2ffab5fc390a7dce7';
 
--- Seed Sample Movie
-INSERT INTO `media_items` (`id`, `type`, `genre_id`, `title`, `description`, `poster`, `backdrop`, `release_year`, `duration`, `rating`, `language`, `dailymotion_id`, `is_featured`, `status`) VALUES
-(1, 'movie', 1, 'Jawan: Extended Cut', 'A high-octane action thriller detailing an emotional journey of a man who is set to rectify the wrongs in the society.', 'https://images.unsplash.com/photo-1536440136628-849c177e76a1?w=600&auto=format&fit=crop&q=80', 'https://images.unsplash.com/photo-1574267432553-4b4628081c31?w=1200&auto=format&fit=crop&q=80', '2023', '2h 45m', '8.8', 'Hindi', 'x8n0001', 1, 1),
-(2, 'series', 4, 'Mirzapur: Season of Vengeance', 'A shocking incident at a wedding procession ignites a series of events entangling the lives of two families in the lawless city of Mirzapur.', 'https://images.unsplash.com/photo-1616530940355-351fabd9524b?w=600&auto=format&fit=crop&q=80', 'https://images.unsplash.com/photo-1518676590629-3dcbd9c5a5c9?w=1200&auto=format&fit=crop&q=80', '2024', '3 Seasons', '9.1', 'Hindi', '', 1, 1)
-ON DUPLICATE KEY UPDATE `id`=`id`;
 
--- Seed Seasons for Mirzapur
-INSERT INTO `seasons` (`id`, `series_id`, `season_number`, `title`, `description`, `poster`, `status`) VALUES
-(1, 2, 1, 'Season 1: Rule of Akhandanand', 'The rise of Kaleen Bhaiya and the conflict with Guddu & Bablu.', 'https://images.unsplash.com/photo-1616530940355-351fabd9524b?w=600&auto=format&fit=crop&q=80', 1),
-(2, 2, 2, 'Season 2: Retribution', 'Blood boils and empires clash for total control of Purvanchal.', 'https://images.unsplash.com/photo-1616530940355-351fabd9524b?w=600&auto=format&fit=crop&q=80', 1)
-ON DUPLICATE KEY UPDATE `id`=`id`;
-
--- Seed Episodes for Mirzapur
-INSERT INTO `episodes` (`id`, `series_id`, `season_id`, `dm_account_id`, `episode_number`, `title`, `description`, `thumbnail`, `dailymotion_id`, `duration`, `is_free_preview`, `status`) VALUES
-(1, 2, 1, 1, 1, 'Episode 1: Bhaukaal', 'Akhandanand Tripathi is a carpet exporter and the mafia don of Mirzapur.', 'https://images.unsplash.com/photo-1518676590629-3dcbd9c5a5c9?w=600&auto=format&fit=crop&q=80', 'x8n0002', '48:10', 1, 1),
-(2, 2, 1, 1, 2, 'Episode 2: Gaddi', 'Guddu and Bablu must decide where their true loyalty lies.', 'https://images.unsplash.com/photo-1518676590629-3dcbd9c5a5c9?w=600&auto=format&fit=crop&q=80', 'x8n0003', '52:15', 0, 1),
-(3, 2, 2, 1, 1, 'Episode 1: Dhenkul', 'The war begins anew as surviving factions regroup for vengeance.', 'https://images.unsplash.com/photo-1518676590629-3dcbd9c5a5c9?w=600&auto=format&fit=crop&q=80', 'x8n0004', '56:00', 1, 1)
-ON DUPLICATE KEY UPDATE `id`=`id`;

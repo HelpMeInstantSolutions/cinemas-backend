@@ -1,7 +1,7 @@
-<?php
+﻿<?php
 // backend/admin/includes/navbar.php
 $headerTitle = $headerTitle ?? 'Dashboard';
-$headerSubtitle = $headerSubtitle ?? 'Manage courses, private Dailymotion streams, and students';
+$headerSubtitle = $headerSubtitle ?? 'Manage movies, web series, episodes, and subscribers';
 ?>
 <!-- TOP NAVBAR (STICKY TO MAIN CONTENT) -->
 <header class="bg-white/95 backdrop-blur-sm border-b border-slate-200 px-6 py-4 sticky top-0 z-30 shrink-0 flex flex-col sm:flex-row sm:items-center justify-between gap-4 shadow-sm">
@@ -19,16 +19,16 @@ $headerSubtitle = $headerSubtitle ?? 'Manage courses, private Dailymotion stream
 
     <!-- Actions Bar -->
     <div class="flex items-center gap-2.5 flex-wrap">
-        <a href="/admin/courses/?new=1" 
-           class="inline-flex items-center gap-2 px-3.5 py-2 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 text-xs font-semibold rounded-xl border border-indigo-200/80 transition duration-150">
+        <a href="/admin/movies/?new=1" 
+           class="inline-flex items-center gap-2 px-3.5 py-2 bg-rose-50 hover:bg-rose-100 text-rose-700 text-xs font-semibold rounded-xl border border-rose-200/80 transition duration-150">
             <i data-lucide="plus-circle" class="w-4 h-4"></i>
-            <span>New Course</span>
+            <span>New Movie / Series</span>
         </a>
 
-        <a href="/admin/videos/?new=1" 
-           class="inline-flex items-center gap-2 px-3.5 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold rounded-xl shadow-sm shadow-indigo-500/20 transition duration-150">
-            <i data-lucide="video" class="w-4 h-4"></i>
-            <span>Add Video</span>
+        <a href="/admin/episodes/?new=1" 
+           class="inline-flex items-center gap-2 px-3.5 py-2 bg-gradient-to-r from-rose-600 to-red-600 hover:from-rose-700 hover:to-red-700 text-white text-xs font-semibold rounded-xl shadow-sm transition duration-150">
+            <i data-lucide="play-square" class="w-4 h-4"></i>
+            <span>Add Video Stream</span>
         </a>
 
         <button onclick="window.location.reload()" 
@@ -38,3 +38,4 @@ $headerSubtitle = $headerSubtitle ?? 'Manage courses, private Dailymotion stream
         </button>
     </div>
 </header>
+
