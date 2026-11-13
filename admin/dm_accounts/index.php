@@ -1,4 +1,4 @@
-<?php
+﻿<?php
 // backend/admin/dm_accounts/index.php - Dailymotion Multi-Account Manager
 $pageTitle = 'Dailymotion Accounts';
 $activePage = 'dm_accounts';
@@ -26,7 +26,7 @@ foreach ($dmAccounts as $a) {
 }
 
 // Default Client ID for 1-Click Authorize
-$defaultClientId = '2f565bdf5ec09e7464db';
+$defaultClientId = '20339e78eaa0487f12ea';
 $defaultRedirectUri = 'https://cinemas.mybhiwani.in/api/';
 $oneClickAuthUrl = "https://api.dailymotion.com/oauth/authorize?response_type=code&client_id={$defaultClientId}&redirect_uri=" . urlencode($defaultRedirectUri) . "&scope=manage_videos+read+userinfo";
 ?>
@@ -342,7 +342,7 @@ $oneClickAuthUrl = "https://api.dailymotion.com/oauth/authorize?response_type=co
             <div>
                 <label class="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">Dailymotion API Key (Client ID) *</label>
                 <input type="text" id="acc_client_id" 
-                       placeholder="e.g. 2f565bdf5ec09e7464db" 
+                       placeholder="e.g. 20339e78eaa0487f12ea" 
                        class="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-mono focus:outline-none focus:border-indigo-500 focus:bg-white transition">
             </div>
 
@@ -411,7 +411,7 @@ $oneClickAuthUrl = "https://api.dailymotion.com/oauth/authorize?response_type=co
         document.getElementById('account_id').value = '0';
         document.getElementById('acc_name').value = '';
         document.getElementById('acc_client_id').value = '<?= $defaultClientId ?>';
-        document.getElementById('acc_client_secret').value = '6494629f246182ce9acd3c066a7ab5fae5598a06';
+        document.getElementById('acc_client_secret').value = 'd416efc0eddc6d29e1900833176cbddb5373a1e3';
         document.getElementById('acc_refresh_token').value = '';
         document.getElementById('acc_is_default').checked = false;
         document.getElementById('oauth_redirect_input').value = '';
@@ -566,4 +566,5 @@ $oneClickAuthUrl = "https://api.dailymotion.com/oauth/authorize?response_type=co
 </script>
 
 <?php require_once __DIR__ . '/../includes/footer.php'; ?>
+
 
