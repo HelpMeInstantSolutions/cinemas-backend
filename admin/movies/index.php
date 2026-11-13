@@ -13,18 +13,10 @@ $mediaItems = [];
 try {
     $stmt = $pdo->query("SELECT m.*, 
                          (SELECT COUNT(*) FROM seasons s WHERE s.series_id = m.id) AS season_count,
-                         (SELECT COUNT(*) FROM episodes e WHERE e.series_id = m.id) AS episode_count,
-                         g.title AS genre_title
+                         (SELECT COUNT(*) FROM episodes e WHERE e.series_id = m.id) AS episode_count
                          FROM media_items m 
-                         LEFT JOIN genres g ON m.genre_id = g.id 
                          ORDER BY m.id DESC");
     $mediaItems = $stmt->fetchAll();
-} catch (Exception $e) {}
-
-// Fetch genres for dropdown
-$genres = [];
-try {
-    $genres = $pdo->query("SELECT * FROM genres ORDER BY title ASC")->fetchAll();
 } catch (Exception $e) {}
 ?>
 
@@ -67,8 +59,7 @@ try {
             <?php else: ?>
                 <?php foreach ($mediaItems as $c): ?>
                     <div class="media-card bg-white rounded-2xl border border-slate-200/80 shadow-sm hover:shadow-md transition overflow-hidden flex flex-col"
-                         data-title="<?= strtolower(htmlspecialchars($c['title'])) ?>"
-                         data-genre="<?= strtolower(htmlspecialchars($c['genre_title'] ?? '')) ?>">
+                         data-title="<?= strtolower(htmlspecialchars($c['title'])) ?>">
                         <!-- Media Poster / Backdrop -->
                         <div class="relative h-44 bg-slate-900 overflow-hidden group">
                             <?php 

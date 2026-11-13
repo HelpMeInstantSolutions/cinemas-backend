@@ -411,6 +411,11 @@ try {
                 body: JSON.stringify(payload)
             });
             var json = await res.json();
+            if (res.status === 401 || (json && json.message && json.message.indexOf('Unauthorized') !== -1)) {
+                showToast('Admin session expired. Please sign in.', 'error');
+                setTimeout(() => window.location.href = '/admin/login/?redirect=' + encodeURIComponent(window.location.pathname), 1000);
+                return;
+            }
             if (json.status) {
                 showToast(json.message || 'Stream saved successfully', 'success');
                 setTimeout(() => window.location.reload(), 600);

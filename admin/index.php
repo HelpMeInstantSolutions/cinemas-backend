@@ -22,11 +22,10 @@ try {
 // Fetch recent movies & series
 $recentMedia = [];
 try {
-    $stmt = $pdo->query("SELECT m.*, g.title as genre_name,
+    $stmt = $pdo->query("SELECT m.*,
                                 (SELECT COUNT(*) FROM seasons s WHERE s.series_id = m.id) AS season_count,
                                 (SELECT COUNT(*) FROM episodes e WHERE e.series_id = m.id) AS episode_count
                          FROM media_items m 
-                         LEFT JOIN genres g ON m.genre_id = g.id
                          ORDER BY m.id DESC LIMIT 6");
     $recentMedia = $stmt->fetchAll();
 } catch (Exception $e) {}
@@ -156,7 +155,7 @@ try {
                                 <p class="text-xs text-slate-400 mt-1 line-clamp-2"><?= htmlspecialchars($m['description']) ?></p>
                             </div>
                             <div class="mt-4 pt-3 border-t border-slate-800/80 flex items-center justify-between text-[11px] text-slate-400">
-                                <span><?= htmlspecialchars($m['genre_name'] ?? 'General') ?> • <?= htmlspecialchars($m['release_year'] ?? '2024') ?></span>
+                                <span><?= htmlspecialchars($m['language'] ?? 'Hindi') ?> • <?= htmlspecialchars($m['release_year'] ?? '2024') ?></span>
                                 <span class="font-medium text-slate-300">
                                     <?= $m['type'] === 'series' ? $m['season_count'] . ' Seasons' : ($m['duration'] ?? '2h') ?>
                                 </span>

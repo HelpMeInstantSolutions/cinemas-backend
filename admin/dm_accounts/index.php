@@ -475,6 +475,11 @@ $oneClickAuthUrl = "https://api.dailymotion.com/oauth/authorize?response_type=co
                 })
             });
             var json = await res.json();
+            if (res.status === 401 || (json && json.message && json.message.indexOf('Unauthorized') !== -1)) {
+                showToast('Admin session expired. Please sign in.', 'error');
+                setTimeout(() => window.location.href = '/admin/login/?redirect=' + encodeURIComponent(window.location.pathname), 1000);
+                return;
+            }
             if (json.status) {
                 statusEl.className = 'text-xs text-emerald-600 font-semibold block';
                 statusEl.innerText = '✓ Success! Connected Channel: ' + (json.data ? json.data.channel_name : '');
@@ -563,6 +568,18 @@ $oneClickAuthUrl = "https://api.dailymotion.com/oauth/authorize?response_type=co
             showToast('Network error removing account', 'error');
         }
     }
+    // Handle redirect alerts
+    document.addEventListener('DOMContentLoaded', function() {
+        var params = new URLSearchParams(window.location.search);
+        if (params.get('connected') === '1') {
+            var ch = params.get('channel') || 'Dailymotion';
+            showToast('✓ Successfully connected account: ' + ch, 'success');
+            history.replaceState(null, '', window.location.pathname);
+        } else if (params.get('error')) {
+            showToast('✕ Error: ' + params.get('error'), 'error');
+            history.replaceState(null, '', window.location.pathname);
+        }
+    });
 </script>
 
 <?php require_once __DIR__ . '/../includes/footer.php'; ?>

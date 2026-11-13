@@ -177,14 +177,50 @@ function sendResponse($status, $message, $data = null, $code = 200) {
     exit();
 }
 
+// Configure long-lived persistent sessions (30 days)
+if (session_status() === PHP_SESSION_NONE) {
+    ini_set('session.cookie_lifetime', 2592000); // 30 days
+    ini_set('session.gc_maxlifetime', 2592000);
+    $isHttps = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') || (isset($_SERVER['SERVER_PORT']) && $_SERVER['SERVER_PORT'] == 443);
+    session_set_cookie_params([
+        'lifetime' => 2592000,
+        'path' => '/',
+        'domain' => '',
+        'secure' => $isHttps,
+        'httponly' => true,
+        'samesite' => 'Lax'
+    ]);
+    session_start();
+}
+
+const ADMIN_REMEMBER_SECRET = 'cinemas_master_secret_key_bhiwani_2026';
+
+function generateAdminToken() {
+    return hash_hmac('sha256', 'cinemas_admin:super_bhiwani', ADMIN_REMEMBER_SECRET);
+}
+
+function verifyAdminToken($token) {
+    if (empty($token)) return false;
+    return hash_equals(generateAdminToken(), $token);
+}
+
 function requireAdminAuth($pdo) {
     if (session_status() === PHP_SESSION_NONE) {
         session_start();
     }
     // Accept either admin_logged session or admin_id
-    if (!isset($_SESSION['admin_logged']) && !isset($_SESSION['admin_id'])) {
-        sendResponse(false, 'Unauthorized. Please login.', null, 401);
+    if (!empty($_SESSION['admin_logged']) || !empty($_SESSION['admin_id'])) {
+        return true;
     }
+    // Check persistent 30-day admin token
+    if (!empty($_COOKIE['cinemas_admin_token']) && verifyAdminToken($_COOKIE['cinemas_admin_token'])) {
+        $_SESSION['admin_logged'] = true;
+        $_SESSION['admin_id'] = 1;
+        $_SESSION['admin_name'] = 'Super Admin';
+        $_SESSION['admin_username'] = 'admin';
+        return true;
+    }
+    sendResponse(false, 'Unauthorized. Please login.', null, 401);
 }
 
 function httpPostDailymotion($url, $postFields, $headers = []) {

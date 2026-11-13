@@ -1,10 +1,20 @@
 ﻿<?php
 // backend/admin/includes/header.php
-if (session_status() === PHP_SESSION_NONE) {
-    session_start();
-}
-
 require_once __DIR__ . '/../../api/config.php';
+
+// Verify admin session or 30-day persistent cookie
+if (empty($_SESSION['admin_logged'])) {
+    if (!empty($_COOKIE['cinemas_admin_token']) && verifyAdminToken($_COOKIE['cinemas_admin_token'])) {
+        $_SESSION['admin_logged'] = true;
+        $_SESSION['admin_id'] = 1;
+        $_SESSION['admin_name'] = 'Super Admin';
+        $_SESSION['admin_username'] = 'admin';
+    } else {
+        $currUri = $_SERVER['REQUEST_URI'] ?? '/admin/';
+        header("Location: /admin/login/?redirect=" . urlencode($currUri));
+        exit();
+    }
+}
 
 // Server-side database counts for instant display
 $serverStats = getAppStats($pdo);

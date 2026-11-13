@@ -27,6 +27,11 @@ if ($action === 'login') {
         $_SESSION['admin_id'] = $admin['id'];
         $_SESSION['admin_name'] = $admin['name'];
         $_SESSION['admin_username'] = $admin['username'];
+
+        // Set persistent 30-day remember-me cookie
+        $isHttps = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') || (isset($_SERVER['SERVER_PORT']) && $_SERVER['SERVER_PORT'] == 443);
+        setcookie('cinemas_admin_token', generateAdminToken(), time() + 2592000, '/', '', $isHttps, true);
+
         sendResponse(true, "Login successful! Welcome back.", [
             'username' => $admin['username'],
             'name' => $admin['name']
@@ -39,6 +44,7 @@ if ($action === 'login') {
 if ($action === 'logout') {
     $_SESSION = [];
     session_destroy();
+    setcookie('cinemas_admin_token', '', time() - 3600, '/', '', false, true);
     sendResponse(true, "Logged out successfully");
 }
 

@@ -74,11 +74,6 @@ session_start();
     <script>
         lucide.createIcons();
 
-        // If already logged in, redirect to dashboard
-        if (localStorage.getItem('admin_logged') === 'true') {
-            window.location.href = '/admin/';
-        }
-
         async function handleAdminLogin(e) {
             e.preventDefault();
             var btn = document.getElementById('btnLogin');
@@ -106,8 +101,10 @@ session_start();
                         position: "right",
                         style: { background: "#10b981", borderRadius: "10px", fontSize: "13px" }
                     }).showToast();
+                    var params = new URLSearchParams(window.location.search);
+                    var dest = params.get('redirect') || '/admin/';
                     setTimeout(function() {
-                        window.location.href = '/admin/';
+                        window.location.href = dest;
                     }, 500);
                 } else {
                     Toastify({
