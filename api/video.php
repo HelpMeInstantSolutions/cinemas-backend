@@ -49,6 +49,9 @@ $token = $found ? $found['token'] : getDmAccountToken($pdo, $accId);
 $dmParams = "autoplay=1&mute=0&controls=1&ui-logo=0&ui-watermark=0&sharing-enable=0&endscreen-enable=0&ui-start-screen-info=0&queue-enable=0";
 $authorizedEmbedUrl = "https://geo.dailymotion.com/player/xtv3w.html?video=" . $cleanId . "&" . $dmParams;
 
+$isAvailable = true;
+$errorMsg = null;
+
 if ($found && !empty($found['video']['embed_url'])) {
     $embed = $found['video']['embed_url'];
     // Force use of xtv3w Enterprise Player (enable_dm_logo: false, enable_sharing: false, watermark: none)
@@ -62,7 +65,10 @@ if ($found && !empty($found['video']['embed_url'])) {
     $res = httpGetDailymotion("https://api.dailymotion.com/video/" . $cleanId . "?fields=id,title,embed_url,private", ["Authorization: Bearer " . $token]);
     if ($res) {
         $dmJson = json_decode($res, true);
-        if (isset($dmJson['embed_url']) && !empty($dmJson['embed_url'])) {
+        if (isset($dmJson['error'])) {
+            $isAvailable = false;
+            $errorMsg = $dmJson['error']['message'] ?? "This video does not exist or has been deleted.";
+        } elseif (isset($dmJson['embed_url']) && !empty($dmJson['embed_url'])) {
             $embed = $dmJson['embed_url'];
             $embed = str_replace('/player.html', '/player/xtv3w.html', $embed);
             if (strpos($embed, '/player/xtv3w.html') === false && preg_match('/video=([a-zA-Z0-9]+)/', $embed, $vm)) {
@@ -70,18 +76,22 @@ if ($found && !empty($found['video']['embed_url'])) {
             }
             $authorizedEmbedUrl = $embed . (strpos($embed, '?') !== false ? '&' : '?') . $dmParams;
             $video['title'] = $dmJson['title'] ?? $video['title'];
+            $isAvailable = true;
         }
     }
 }
 
 // Fallback: If authorized URL still uses raw ID (token was expired or not found), force refresh token and re-query
-if (strpos($authorizedEmbedUrl, 'video=' . $cleanId) !== false && $cleanId !== 'x992mce') {
+if ($isAvailable && strpos($authorizedEmbedUrl, 'video=' . $cleanId) !== false && $cleanId !== 'x992mce') {
     $forceToken = getDmAccountToken($pdo, $accId, true);
     if ($forceToken) {
         $res = httpGetDailymotion("https://api.dailymotion.com/video/" . $cleanId . "?fields=id,title,embed_url,private", ["Authorization: Bearer " . $forceToken]);
         if ($res) {
             $dmJson = json_decode($res, true);
-            if (isset($dmJson['embed_url']) && !empty($dmJson['embed_url'])) {
+            if (isset($dmJson['error'])) {
+                $isAvailable = false;
+                $errorMsg = $dmJson['error']['message'] ?? "This video does not exist or has been deleted.";
+            } elseif (isset($dmJson['embed_url']) && !empty($dmJson['embed_url'])) {
                 $embed = $dmJson['embed_url'];
                 $embed = str_replace('/player.html', '/player/xtv3w.html', $embed);
                 if (strpos($embed, '/player/xtv3w.html') === false && preg_match('/video=([a-zA-Z0-9]+)/', $embed, $vm)) {
@@ -90,6 +100,7 @@ if (strpos($authorizedEmbedUrl, 'video=' . $cleanId) !== false && $cleanId !== '
                 $authorizedEmbedUrl = $embed . (strpos($embed, '?') !== false ? '&' : '?') . $dmParams;
                 $video['title'] = $dmJson['title'] ?? $video['title'];
                 $token = $forceToken;
+                $isAvailable = true;
             }
         }
     }
@@ -97,6 +108,10 @@ if (strpos($authorizedEmbedUrl, 'video=' . $cleanId) !== false && $cleanId !== '
 
 $video['embed_url'] = $authorizedEmbedUrl;
 $video['access_token'] = $token;
+$video['is_available'] = $isAvailable;
+if (!$isAvailable) {
+    $video['error_details'] = $errorMsg;
+}
 
 sendResponse(true, "Video details retrieved with Owner Authorized Private Stream", $video);
 
