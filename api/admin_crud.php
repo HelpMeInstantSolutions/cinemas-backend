@@ -1,558 +1,153 @@
 <?php
-// backend/api/admin_crud.php
+// backend/api/admin_crud.php - Admin CRUD Handler for Movies, Series, Seasons & Episodes
 require_once __DIR__ . '/config.php';
+requireAdminAuth($pdo);
 
-session_start();
+$action = $_POST['action'] ?? $_GET['action'] ?? '';
 
-// Helper to get JSON input
-$input = json_decode(file_get_contents('php://input'), true) ?? $_POST;
-$action = $_GET['action'] ?? ($input['action'] ?? '');
-
-try {
 switch ($action) {
-    case 'login':
-        $username = trim($input['username'] ?? '');
-        $password = trim($input['password'] ?? '');
+    // -------------------------------------------------------------
+    // MOVIES / SERIES CRUD
+    // -------------------------------------------------------------
+    case 'save_media':
+        $id = (int)($_POST['id'] ?? 0);
+        $type = $_POST['type'] === 'series' ? 'series' : 'movie';
+        $genre_id = (int)($_POST['genre_id'] ?? 0);
+        $title = trim($_POST['title'] ?? '');
+        $description = trim($_POST['description'] ?? '');
+        $poster = trim($_POST['poster'] ?? '');
+        $backdrop = trim($_POST['backdrop'] ?? '');
+        $release_year = trim($_POST['release_year'] ?? date('Y'));
+        $duration = trim($_POST['duration'] ?? '');
+        $rating = trim($_POST['rating'] ?? '8.5');
+        $language = trim($_POST['language'] ?? 'Hindi');
+        $dailymotion_id = trim($_POST['dailymotion_id'] ?? '');
+        $stream_url = trim($_POST['stream_url'] ?? '');
+        $is_featured = isset($_POST['is_featured']) ? 1 : 0;
+        $status = isset($_POST['status']) ? (int)$_POST['status'] : 1;
 
-        if (!$username || !$password) {
-            sendResponse(false, "Username and password are required", null, 400);
-        }
-
-        $stmt = $pdo->prepare("SELECT * FROM admins WHERE username = ?");
-        $stmt->execute([$username]);
-        $admin = $stmt->fetch();
-
-        // Check password or fallback to admin123
-        if ($admin && (password_verify($password, $admin['password']) || ($username === 'admin' && $password === 'admin123'))) {
-            $_SESSION['admin_logged'] = true;
-            $_SESSION['admin_name'] = $admin['name'];
-            sendResponse(true, "Login successful! Welcome back.", [
-                'username' => $admin['username'],
-                'name' => $admin['name']
-            ]);
-        } else {
-            sendResponse(false, "Invalid credentials. Please try again.", null, 401);
-        }
-        break;
-
-    case 'logout':
-        session_destroy();
-        sendResponse(true, "Logged out successfully");
-        break;
-
-    case 'fetch_dm_info':
-        $dmId = trim($input['dailymotion_id'] ?? ($_GET['dailymotion_id'] ?? ''));
-        $preferredAccountId = (int)($input['account_id'] ?? ($_GET['account_id'] ?? 0));
-        if (!$dmId) {
-            sendResponse(false, "Dailymotion ID is required", null, 400);
-        }
-
-        if (preg_match('/(?:dailymotion\.com\/(?:video|hub)\/|dai\.ly\/)([a-zA-Z0-9]+)/', $dmId, $matches)) {
-            $dmId = $matches[1];
-        }
-
-        // Query across all connected Dailymotion accounts in pool
-        $res = findDmAccountForVideo($pdo, $dmId, $preferredAccountId);
-
-        if ($res && isset($res['video']['id'])) {
-            $vData = $res['video'];
-            $account = $res['account'];
-            $token = $res['token'];
-
-            $secs = (int)($vData['duration'] ?? 0);
-            $hrs = floor($secs / 3600);
-            $mins = floor(($secs % 3600) / 60);
-            $remSecs = $secs % 60;
-
-            if ($hrs > 0) {
-                $formattedDuration = sprintf("%02d:%02d:%02d", $hrs, $mins, $remSecs);
-            } else {
-                $formattedDuration = sprintf("%02d:%02d", $mins, $remSecs);
-            }
-
-            sendResponse(true, "Video details fetched automatically!", [
-                'id' => $vData['id'],
-                'title' => $vData['title'] ?? '',
-                'duration' => $formattedDuration,
-                'seconds' => $secs,
-                'thumbnail' => $vData['thumbnail_url'] ?? '',
-                'private' => $vData['private'] ?? false,
-                'account_id' => $account ? (int)$account['id'] : 0,
-                'account_name' => $account ? $account['name'] : 'Public / Unlisted',
-                'channel_name' => $account ? ($account['channel_name'] ?? '') : '',
-                '_token' => $token
-            ]);
-        } else {
-            // Get default account token for client-side direct browser fallback
-            $fallbackToken = getDmAccountToken($pdo);
-            sendResponse(false, "Video not found on any connected Dailymotion account. Please verify ID or URL.", [
-                '_token' => $fallbackToken,
-                'video_id' => $dmId
-            ], 404);
-        }
-        break;
-
-    case 'list_dm_accounts':
-        $stmt = $pdo->query("
-            SELECT a.id, a.name, a.channel_name, a.uid, a.email, a.client_id, a.is_default, a.status, a.created_at,
-                   (SELECT COUNT(*) FROM videos v WHERE v.dm_account_id = a.id) as video_count
-            FROM dm_accounts a
-            ORDER BY a.is_default DESC, a.id ASC
-        ");
-        $accounts = $stmt->fetchAll();
-        sendResponse(true, "Dailymotion accounts loaded", $accounts);
-        break;
-
-    case 'save_dm_account':
-        $id = (int)($input['id'] ?? 0);
-        $name = trim($input['name'] ?? '');
-        $clientId = trim($input['client_id'] ?? '');
-        $clientSecret = trim($input['client_secret'] ?? '');
-        $rawTokenInput = trim($input['refresh_token'] ?? '');
-        $isDefault = !empty($input['is_default']) ? 1 : 0;
-        $status = isset($input['status']) ? (int)$input['status'] : 1;
-
-        if (!$name || !$clientId || !$clientSecret || !$rawTokenInput) {
-            sendResponse(false, "Account Name, API Key, API Secret, and Refresh Token / Code are all required.", null, 400);
-        }
-
-        // Auto-detect if user entered a full redirect URL or code
-        $code = null;
-        if (preg_match('/code=([a-zA-Z0-9]+)/', $rawTokenInput, $m)) {
-            $code = $m[1];
-        }
-
-        $tData = null;
-        $newRefreshToken = $rawTokenInput;
-
-        // 1. If not clearly a code URL, try grant_type=refresh_token first
-        if (!$code) {
-            $postData = http_build_query([
-                'grant_type' => 'refresh_token',
-                'client_id' => $clientId,
-                'client_secret' => $clientSecret,
-                'refresh_token' => $rawTokenInput
-            ]);
-            $res = httpPostDailymotion('https://api.dailymotion.com/oauth/token', $postData);
-            $parsed = $res ? json_decode($res, true) : null;
-            if ($parsed && !empty($parsed['access_token'])) {
-                $tData = $parsed;
-            }
-        }
-
-        // 2. If refresh_token failed or was a code, try exchanging as authorization_code
-        if (!$tData || empty($tData['access_token'])) {
-            $authCode = $code ?: $rawTokenInput;
-            $candidateUris = [];
-            if (strpos($rawTokenInput, '?') !== false) {
-                $detected = explode('?', $rawTokenInput)[0];
-                $candidateUris[] = $detected;
-                $candidateUris[] = rtrim($detected, '/');
-                $candidateUris[] = rtrim($detected, '/') . '/';
-            }
-            $candidateUris[] = 'https://cinemas.mybhiwani.in/api/';
-            $candidateUris[] = 'https://cinemas.mybhiwani.in/api';
-            $candidateUris[] = 'https://insightclasses.in/api';
-            $candidateUris[] = 'https://insightclasses.in/api/';
-            $candidateUris = array_values(array_unique($candidateUris));
-
-            foreach ($candidateUris as $curUri) {
-                $postData = http_build_query([
-                    'grant_type' => 'authorization_code',
-                    'client_id' => $clientId,
-                    'client_secret' => $clientSecret,
-                    'redirect_uri' => $curUri,
-                    'code' => $authCode
-                ]);
-                $cRes = httpPostDailymotion('https://api.dailymotion.com/oauth/token', $postData);
-                $cData = $cRes ? json_decode($cRes, true) : null;
-                if ($cData && !empty($cData['access_token'])) {
-                    $tData = $cData;
-                    break;
-                }
-            }
-        }
-
-        if (!$tData || empty($tData['access_token'])) {
-            $err = $tData['error']['message'] ?? $tData['error_description'] ?? "Failed to connect to Dailymotion. Please verify your API Key, Secret, and Refresh Token / Code.";
-            sendResponse(false, $err, $tData, 400);
-        }
-
-        $accessToken = $tData['access_token'];
-        $expiresAt = time() + (int)($tData['expires_in'] ?? 36000);
-        $newRefreshToken = $tData['refresh_token'] ?? $rawTokenInput;
-        $uid = $tData['uid'] ?? '';
-
-        // Query user info to get real channel name and email
-        $uRes = httpGetDailymotion("https://api.dailymotion.com/user/me?fields=id,screenname,email", ["Authorization: Bearer " . $accessToken]);
-        $uData = $uRes ? json_decode($uRes, true) : null;
-        $channelName = $uData['screenname'] ?? $name;
-        $email = $uData['email'] ?? '';
-        if (!empty($uData['id'])) {
-            $uid = $uData['id'];
-        }
-
-        if ($isDefault) {
-            $pdo->exec("UPDATE dm_accounts SET is_default = 0");
+        if (empty($title)) {
+            sendResponse(false, "Title is required", null, 400);
         }
 
         if ($id > 0) {
-            $stmt = $pdo->prepare("
-                UPDATE dm_accounts SET name = ?, channel_name = ?, uid = ?, email = ?, client_id = ?, client_secret = ?, refresh_token = ?, access_token = ?, expires_at = ?, is_default = ?, status = ?
-                WHERE id = ?
-            ");
-            $stmt->execute([$name, $channelName, $uid, $email, $clientId, $clientSecret, $newRefreshToken, $accessToken, $expiresAt, $isDefault, $status, $id]);
-            $msg = "Account '{$name}' updated successfully!";
+            $stmt = $pdo->prepare("UPDATE media_items SET type=?, genre_id=?, title=?, description=?, poster=?, backdrop=?, release_year=?, duration=?, rating=?, language=?, dailymotion_id=?, stream_url=?, is_featured=?, status=? WHERE id=?");
+            $stmt->execute([$type, $genre_id, $title, $description, $poster, $backdrop, $release_year, $duration, $rating, $language, $dailymotion_id, $stream_url, $is_featured, $status, $id]);
+            sendResponse(true, ucfirst($type) . " updated successfully", ['id' => $id]);
         } else {
-            $stmt = $pdo->prepare("
-                INSERT INTO dm_accounts (name, channel_name, uid, email, client_id, client_secret, refresh_token, access_token, expires_at, is_default, status)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            ");
-            $stmt->execute([$name, $channelName, $uid, $email, $clientId, $clientSecret, $newRefreshToken, $accessToken, $expiresAt, $isDefault, $status]);
-            $id = $pdo->lastInsertId();
-            $msg = "Dailymotion Account '{$channelName}' connected successfully!";
+            $stmt = $pdo->prepare("INSERT INTO media_items (type, genre_id, title, description, poster, backdrop, release_year, duration, rating, language, dailymotion_id, stream_url, is_featured, status) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
+            $stmt->execute([$type, $genre_id, $title, $description, $poster, $backdrop, $release_year, $duration, $rating, $language, $dailymotion_id, $stream_url, $is_featured, $status]);
+            sendResponse(true, ucfirst($type) . " added successfully", ['id' => $pdo->lastInsertId()]);
         }
-
-        sendResponse(true, $msg, [
-            'id' => $id,
-            'name' => $name,
-            'channel_name' => $channelName,
-            'uid' => $uid,
-            'email' => $email
-        ]);
         break;
 
-    case 'delete_dm_account':
-        $id = (int)($input['id'] ?? ($_GET['id'] ?? 0));
-        if ($id <= 0) {
-            sendResponse(false, "Invalid account ID", null, 400);
-        }
+    case 'delete_media':
+        $id = (int)($_POST['id'] ?? 0);
+        if ($id <= 0) sendResponse(false, "Invalid ID", null, 400);
 
-        $check = $pdo->prepare("SELECT * FROM dm_accounts WHERE id = ?");
-        $check->execute([$id]);
-        $acc = $check->fetch();
-        if (!$acc) {
-            sendResponse(false, "Account not found", null, 404);
-        }
-
-        $del = $pdo->prepare("DELETE FROM dm_accounts WHERE id = ?");
-        $del->execute([$id]);
-
-        // If deleted was default, make another one default
-        if ($acc['is_default']) {
-            $pdo->exec("UPDATE dm_accounts SET is_default = 1 WHERE id = (SELECT id FROM dm_accounts LIMIT 1)");
-        }
-
-        // Unlink videos or set dm_account_id = 0
-        $up = $pdo->prepare("UPDATE videos SET dm_account_id = 0 WHERE dm_account_id = ?");
-        $up->execute([$id]);
-
-        sendResponse(true, "Dailymotion account removed successfully.");
+        $pdo->prepare("DELETE FROM media_items WHERE id = ?")->execute([$id]);
+        sendResponse(true, "Title and associated content deleted successfully");
         break;
 
-    case 'exchange_dm_code':
-        $id = (int)($input['id'] ?? 0);
-        $rawCodeInput = trim($input['code'] ?? ($_GET['code'] ?? ''));
-        $name = trim($input['name'] ?? '');
-        $clientId = trim($input['client_id'] ?? '2f565bdf5ec09e7464db');
-        $clientSecret = trim($input['client_secret'] ?? '6494629f246182ce9acd3c066a7ab5fae5598a06');
+    // -------------------------------------------------------------
+    // SEASONS CRUD (FOR SERIES)
+    // -------------------------------------------------------------
+    case 'save_season':
+        $id = (int)($_POST['id'] ?? 0);
+        $series_id = (int)($_POST['series_id'] ?? 0);
+        $season_number = (int)($_POST['season_number'] ?? 1);
+        $title = trim($_POST['title'] ?? '');
+        $description = trim($_POST['description'] ?? '');
+        $poster = trim($_POST['poster'] ?? '');
+        $status = isset($_POST['status']) ? (int)$_POST['status'] : 1;
 
-        if (!$rawCodeInput) {
-            sendResponse(false, "Authorization code or redirected URL is required", null, 400);
-        }
-
-        // 1. Extract code
-        $code = $rawCodeInput;
-        if (preg_match('/code=([a-zA-Z0-9]+)/', $rawCodeInput, $m)) {
-            $code = $m[1];
-        }
-
-        // 2. Build candidate redirect URIs (auto-detect from pasted URL)
-        $candidateUris = [];
-        if (strpos($rawCodeInput, '?') !== false) {
-            $detected = explode('?', $rawCodeInput)[0];
-            $candidateUris[] = $detected;
-            $candidateUris[] = rtrim($detected, '/');
-            $candidateUris[] = rtrim($detected, '/') . '/';
-        }
-        $candidateUris[] = 'https://cinemas.mybhiwani.in/api/';
-        $candidateUris[] = 'https://cinemas.mybhiwani.in/api';
-        $candidateUris[] = 'https://insightclasses.in/api';
-        $candidateUris[] = 'https://insightclasses.in/api/';
-        $candidateUris = array_values(array_unique($candidateUris));
-
-        $tData = null;
-        $usedUri = null;
-        $lastErr = null;
-
-        // Try candidate URIs
-        foreach ($candidateUris as $curUri) {
-            $postData = http_build_query([
-                'grant_type' => 'authorization_code',
-                'client_id' => $clientId,
-                'client_secret' => $clientSecret,
-                'redirect_uri' => $curUri,
-                'code' => $code
-            ]);
-
-            $res = httpPostDailymotion('https://api.dailymotion.com/oauth/token', $postData);
-            $parsed = $res ? json_decode($res, true) : null;
-            if ($parsed && !empty($parsed['access_token'])) {
-                $tData = $parsed;
-                $usedUri = $curUri;
-                break;
-            } else {
-                $lastErr = $parsed;
-            }
-        }
-
-        if (!$tData || empty($tData['access_token']) || empty($tData['refresh_token'])) {
-            $err = $lastErr['error']['message'] ?? $lastErr['error_description'] ?? "Failed to exchange authorization code for tokens. The authorization code might have expired (valid for 10 minutes) or has already been used once. Please click Authorize again to generate a fresh link.";
-            sendResponse(false, $err, $lastErr, 400);
-        }
-
-        $accessToken = $tData['access_token'];
-        $refreshToken = $tData['refresh_token'];
-        $expiresAt = time() + (int)($tData['expires_in'] ?? 36000);
-        $uid = $tData['uid'] ?? '';
-
-        // Query user info to get real channel screenname and email
-        $uRes = httpGetDailymotion("https://api.dailymotion.com/user/me?fields=id,screenname,email", ["Authorization: Bearer " . $accessToken]);
-        $uData = $uRes ? json_decode($uRes, true) : null;
-        $channelName = $uData['screenname'] ?? ($name ?: 'Channel');
-        $email = $uData['email'] ?? '';
-        if (!empty($uData['id'])) {
-            $uid = $uData['id'];
-        }
-
-        $accName = $name ?: ($channelName . ' (' . $uid . ')');
-
-        // Check if account already exists with this uid or client_id or updating specific id
-        $existingId = $id > 0 ? $id : 0;
-        if (!$existingId) {
-            $checkStmt = $pdo->prepare("SELECT id FROM dm_accounts WHERE uid = ? OR (client_id = ? AND client_id != '2f565bdf5ec09e7464db')");
-            $checkStmt->execute([$uid, $clientId]);
-            $existingId = (int)$checkStmt->fetchColumn();
-        }
-
-        if ($existingId) {
-            $stmt = $pdo->prepare("
-                UPDATE dm_accounts SET name = ?, channel_name = ?, uid = ?, email = ?, client_id = ?, client_secret = ?, refresh_token = ?, access_token = ?, expires_at = ?, status = 1
-                WHERE id = ?
-            ");
-            $stmt->execute([$accName, $channelName, $uid, $email, $clientId, $clientSecret, $refreshToken, $accessToken, $expiresAt, $existingId]);
-            $accId = $existingId;
-        } else {
-            $stmt = $pdo->prepare("
-                INSERT INTO dm_accounts (name, channel_name, uid, email, client_id, client_secret, refresh_token, access_token, expires_at, is_default, status)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 1)
-            ");
-            $stmt->execute([$accName, $channelName, $uid, $email, $clientId, $clientSecret, $refreshToken, $accessToken, $expiresAt]);
-            $accId = $pdo->lastInsertId();
-        }
-
-        sendResponse(true, "Successfully connected account '{$channelName}'!", [
-            'id' => $accId,
-            'name' => $accName,
-            'channel_name' => $channelName,
-            'uid' => $uid,
-            'email' => $email,
-            'refresh_token' => $refreshToken
-        ]);
-        break;
-
-    case 'stats':
-        $totalCourses = $pdo->query("SELECT COUNT(*) FROM courses")->fetchColumn();
-        $totalChapters = $pdo->query("SELECT COUNT(*) FROM chapters")->fetchColumn();
-        $totalVideos = $pdo->query("SELECT COUNT(*) FROM videos")->fetchColumn();
-        $totalCategories = $pdo->query("SELECT COUNT(*) FROM categories")->fetchColumn();
-        $totalUsers = $pdo->query("SELECT COUNT(*) FROM users")->fetchColumn();
-        $totalDmAccounts = $pdo->query("SELECT COUNT(*) FROM dm_accounts WHERE status = 1")->fetchColumn();
-
-        sendResponse(true, "Stats loaded", [
-            'courses' => $totalCourses,
-            'chapters' => $totalChapters,
-            'videos' => $totalVideos,
-            'categories' => $totalCategories,
-            'users' => $totalUsers,
-            'dm_accounts' => $totalDmAccounts
-        ]);
-        break;
-
-    case 'list_chapters':
-        $courseId = (int)($input['course_id'] ?? ($_GET['course_id'] ?? 0));
-        if ($courseId > 0) {
-            $stmt = $pdo->prepare("SELECT ch.*, c.title as course_title,
-                                   (SELECT COUNT(*) FROM videos v WHERE v.chapter_id = ch.id) as video_count 
-                                   FROM chapters ch 
-                                   LEFT JOIN courses c ON ch.course_id = c.id 
-                                   WHERE ch.course_id = ? 
-                                   ORDER BY ch.sort_order ASC, ch.id ASC");
-            $stmt->execute([$courseId]);
-        } else {
-            $stmt = $pdo->query("SELECT ch.*, c.title as course_title,
-                                 (SELECT COUNT(*) FROM videos v WHERE v.chapter_id = ch.id) as video_count 
-                                 FROM chapters ch 
-                                 LEFT JOIN courses c ON ch.course_id = c.id 
-                                 ORDER BY ch.course_id DESC, ch.sort_order ASC");
-        }
-        $chapters = $stmt->fetchAll();
-        sendResponse(true, "Chapters retrieved successfully", $chapters);
-        break;
-
-    case 'save_chapter':
-        $id = (int)($input['id'] ?? 0);
-        $courseId = (int)($input['course_id'] ?? 0);
-        $title = trim($input['title'] ?? '');
-        $description = trim($input['description'] ?? '');
-        $sortOrder = (int)($input['sort_order'] ?? 1);
-
-        if ($courseId <= 0 || empty($title)) {
-            sendResponse(false, "Course selection and Chapter Title are required.", null, 400);
-        }
-
-        // Verify that course exists
-        $courseCheck = $pdo->prepare("SELECT id, title FROM courses WHERE id = ?");
-        $courseCheck->execute([$courseId]);
-        $existingCourse = $courseCheck->fetch();
-        if (!$existingCourse) {
-            sendResponse(false, "Selected Course (ID #{$courseId}) does not exist. Please select or create an existing course first.", null, 400);
+        if ($series_id <= 0 || empty($title)) {
+            sendResponse(false, "Series and Season Title are required", null, 400);
         }
 
         if ($id > 0) {
-            $stmt = $pdo->prepare("UPDATE chapters SET course_id = ?, title = ?, description = ?, sort_order = ? WHERE id = ?");
-            $stmt->execute([$courseId, $title, $description, $sortOrder, $id]);
-            sendResponse(true, "Chapter updated successfully!");
+            $stmt = $pdo->prepare("UPDATE seasons SET series_id=?, season_number=?, title=?, description=?, poster=?, status=? WHERE id=?");
+            $stmt->execute([$series_id, $season_number, $title, $description, $poster, $status, $id]);
+            sendResponse(true, "Season updated successfully", ['id' => $id]);
         } else {
-            $stmt = $pdo->prepare("INSERT INTO chapters (course_id, title, description, sort_order, status) VALUES (?, ?, ?, ?, 1)");
-            $stmt->execute([$courseId, $title, $description, $sortOrder]);
-            sendResponse(true, "New Chapter created successfully!");
+            $stmt = $pdo->prepare("INSERT INTO seasons (series_id, season_number, title, description, poster, status) VALUES (?, ?, ?, ?, ?, ?)");
+            $stmt->execute([$series_id, $season_number, $title, $description, $poster, $status]);
+            sendResponse(true, "Season added successfully", ['id' => $pdo->lastInsertId()]);
         }
         break;
 
-    case 'delete_chapter':
-        $id = (int)($input['id'] ?? 0);
-        if ($id <= 0) sendResponse(false, "Invalid Chapter ID", null, 400);
-
-        // Reset chapter_id on attached videos to 0 (or unassigned)
-        $pdo->prepare("UPDATE videos SET chapter_id = 0 WHERE chapter_id = ?")->execute([$id]);
-        $stmt = $pdo->prepare("DELETE FROM chapters WHERE id = ?");
-        $stmt->execute([$id]);
-        sendResponse(true, "Chapter deleted successfully!");
+    case 'delete_season':
+        $id = (int)($_POST['id'] ?? 0);
+        if ($id <= 0) sendResponse(false, "Invalid season ID", null, 400);
+        $pdo->prepare("DELETE FROM seasons WHERE id = ?")->execute([$id]);
+        sendResponse(true, "Season and all its episodes deleted successfully");
         break;
 
-    case 'list_users':
-        $stmt = $pdo->query("SELECT id, name, email, phone, status, created_at FROM users ORDER BY id DESC");
-        $users = $stmt->fetchAll();
-        sendResponse(true, "Users list retrieved", $users);
-        break;
+    // -------------------------------------------------------------
+    // EPISODES CRUD
+    // -------------------------------------------------------------
+    case 'save_episode':
+        $id = (int)($_POST['id'] ?? 0);
+        $series_id = (int)($_POST['series_id'] ?? 0);
+        $season_id = (int)($_POST['season_id'] ?? 0);
+        $dm_account_id = (int)($_POST['dm_account_id'] ?? 0);
+        $episode_number = (int)($_POST['episode_number'] ?? 1);
+        $title = trim($_POST['title'] ?? '');
+        $description = trim($_POST['description'] ?? '');
+        $thumbnail = trim($_POST['thumbnail'] ?? '');
+        $dailymotion_id = trim($_POST['dailymotion_id'] ?? '');
+        $stream_url = trim($_POST['stream_url'] ?? '');
+        $duration = trim($_POST['duration'] ?? '45:00');
+        $is_free_preview = isset($_POST['is_free_preview']) ? 1 : 0;
+        $status = isset($_POST['status']) ? (int)$_POST['status'] : 1;
 
-    case 'delete_user':
-        $userId = (int)($input['id'] ?? 0);
-        if ($userId <= 0) sendResponse(false, "Invalid User ID", null, 400);
-        $stmt = $pdo->prepare("DELETE FROM users WHERE id = ?");
-        $stmt->execute([$userId]);
-        sendResponse(true, "Student account deleted successfully!");
-        break;
-
-    case 'list_courses':
-        $stmt = $pdo->query("SELECT c.*, cat.title as category_name, 
-                             (SELECT COUNT(*) FROM chapters ch WHERE ch.course_id = c.id) as total_chapters,
-                             (SELECT COUNT(*) FROM videos v WHERE v.course_id = c.id) as total_videos 
-                             FROM courses c 
-                             LEFT JOIN categories cat ON c.category_id = cat.id 
-                             ORDER BY c.id DESC");
-        sendResponse(true, "Courses retrieved successfully", $stmt->fetchAll());
-        break;
-
-    case 'save_course':
-        $id = (int)($input['id'] ?? 0);
-        $title = trim($input['title'] ?? '');
-        $categoryId = (int)($input['category_id'] ?? 1);
-        $description = trim($input['description'] ?? '');
-        $thumbnail = trim($input['thumbnail'] ?? '');
-        $price = (float)($input['price'] ?? 0.0);
-
-        if (!$title) {
-            sendResponse(false, "Course title is required", null, 400);
+        if ($series_id <= 0 || $season_id <= 0 || empty($title) || empty($dailymotion_id)) {
+            sendResponse(false, "Series, Season, Title, and Video/DM ID are required", null, 400);
         }
 
         if ($id > 0) {
-            $stmt = $pdo->prepare("UPDATE courses SET title = ?, category_id = ?, description = ?, thumbnail = ?, price = ? WHERE id = ?");
-            $stmt->execute([$title, $categoryId, $description, $thumbnail, $price, $id]);
-            sendResponse(true, "Course updated successfully!");
+            $stmt = $pdo->prepare("UPDATE episodes SET series_id=?, season_id=?, dm_account_id=?, episode_number=?, title=?, description=?, thumbnail=?, dailymotion_id=?, stream_url=?, duration=?, is_free_preview=?, status=? WHERE id=?");
+            $stmt->execute([$series_id, $season_id, $dm_account_id, $episode_number, $title, $description, $thumbnail, $dailymotion_id, $stream_url, $duration, $is_free_preview, $status, $id]);
+            sendResponse(true, "Episode updated successfully", ['id' => $id]);
         } else {
-            $stmt = $pdo->prepare("INSERT INTO courses (title, category_id, description, thumbnail, price) VALUES (?, ?, ?, ?, ?)");
-            $stmt->execute([$title, $categoryId, $description, $thumbnail, $price]);
-            sendResponse(true, "New course created successfully!");
+            $stmt = $pdo->prepare("INSERT INTO episodes (series_id, season_id, dm_account_id, episode_number, title, description, thumbnail, dailymotion_id, stream_url, duration, is_free_preview, status) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
+            $stmt->execute([$series_id, $season_id, $dm_account_id, $episode_number, $title, $description, $thumbnail, $dailymotion_id, $stream_url, $duration, $is_free_preview, $status]);
+            sendResponse(true, "Episode added successfully", ['id' => $pdo->lastInsertId()]);
         }
         break;
 
-    case 'delete_course':
-        $id = (int)($input['id'] ?? 0);
-        if ($id <= 0) sendResponse(false, "Invalid Course ID", null, 400);
-        
-        $stmt = $pdo->prepare("DELETE FROM courses WHERE id = ?");
-        $stmt->execute([$id]);
-        sendResponse(true, "Course and associated videos deleted successfully!");
+    case 'delete_episode':
+        $id = (int)($_POST['id'] ?? 0);
+        if ($id <= 0) sendResponse(false, "Invalid episode ID", null, 400);
+        $pdo->prepare("DELETE FROM episodes WHERE id = ?")->execute([$id]);
+        sendResponse(true, "Episode deleted successfully");
         break;
 
-    case 'save_video':
-        $id = (int)($input['id'] ?? 0);
-        $courseId = (int)($input['course_id'] ?? 0);
-        $chapterId = (int)($input['chapter_id'] ?? 0);
-        $dmAccountId = (int)($input['dm_account_id'] ?? 0);
-        $title = trim($input['title'] ?? '');
-        $dmId = trim($input['dailymotion_id'] ?? '');
-        $duration = trim($input['duration'] ?? '15:00');
-        $isPreview = (int)($input['is_free_preview'] ?? 0);
-        $sortOrder = (int)($input['sort_order'] ?? 1);
-
-        if ($courseId <= 0 || !$title || !$dmId) {
-            sendResponse(false, "Course ID, video title and Dailymotion Video ID are required", null, 400);
-        }
-
-        // Clean DM ID
-        if (preg_match('/(?:dailymotion\.com\/(?:video|hub)\/|dai\.ly\/)([a-zA-Z0-9]+)/', $dmId, $matches)) {
-            $dmId = $matches[1];
-        }
-
-        // If dmAccountId is 0, auto detect which account owns it
-        if ($dmAccountId <= 0) {
-            $found = findDmAccountForVideo($pdo, $dmId);
-            if ($found && !empty($found['account']['id'])) {
-                $dmAccountId = (int)$found['account']['id'];
-            }
-        }
+    // -------------------------------------------------------------
+    // GENRES CRUD
+    // -------------------------------------------------------------
+    case 'save_genre':
+        $id = (int)($_POST['id'] ?? 0);
+        $title = trim($_POST['title'] ?? '');
+        $icon = trim($_POST['icon'] ?? 'bi-film');
+        if (empty($title)) sendResponse(false, "Genre title is required", null, 400);
 
         if ($id > 0) {
-            $stmt = $pdo->prepare("UPDATE videos SET course_id = ?, chapter_id = ?, dm_account_id = ?, title = ?, dailymotion_id = ?, duration = ?, is_free_preview = ?, sort_order = ? WHERE id = ?");
-            $stmt->execute([$courseId, $chapterId, $dmAccountId, $title, $dmId, $duration, $isPreview, $sortOrder, $id]);
-            sendResponse(true, "Lesson video updated successfully!");
+            $pdo->prepare("UPDATE genres SET title=?, icon=? WHERE id=?")->execute([$title, $icon, $id]);
+            sendResponse(true, "Genre updated", ['id' => $id]);
         } else {
-            $stmt = $pdo->prepare("INSERT INTO videos (course_id, chapter_id, dm_account_id, title, dailymotion_id, duration, is_free_preview, sort_order) VALUES (?, ?, ?, ?, ?, ?, ?, ?)");
-            $stmt->execute([$courseId, $chapterId, $dmAccountId, $title, $dmId, $duration, $isPreview, $sortOrder]);
-            sendResponse(true, "Lesson video added successfully!");
+            $pdo->prepare("INSERT INTO genres (title, icon) VALUES (?, ?)")->execute([$title, $icon]);
+            sendResponse(true, "Genre created", ['id' => $pdo->lastInsertId()]);
         }
         break;
 
-    case 'delete_video':
-        $id = (int)($input['id'] ?? 0);
-        if ($id <= 0) sendResponse(false, "Invalid Video ID", null, 400);
-
-        $stmt = $pdo->prepare("DELETE FROM videos WHERE id = ?");
-        $stmt->execute([$id]);
-        sendResponse(true, "Video deleted successfully!");
+    case 'delete_genre':
+        $id = (int)($_POST['id'] ?? 0);
+        $pdo->prepare("DELETE FROM genres WHERE id=?")->execute([$id]);
+        sendResponse(true, "Genre removed");
         break;
 
     default:
-        sendResponse(false, "Invalid admin action", null, 400);
+        sendResponse(false, "Unknown action", null, 400);
         break;
 }
-} catch (Throwable $e) {
-    sendResponse(false, "Server Error: " . $e->getMessage(), [
-        'file' => basename($e->getFile()),
-        'line' => $e->getLine()
-    ], 500);
-}
-

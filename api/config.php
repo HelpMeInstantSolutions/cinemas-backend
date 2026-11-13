@@ -1,5 +1,5 @@
 <?php
-// backend/api/config.php
+// backend/api/config.php - Cinemas & Web Series Streaming Engine
 header("Access-Control-Allow-Origin: *");
 header("Access-Control-Allow-Headers: Content-Type, Authorization, X-Requested-With");
 header("Access-Control-Allow-Methods: GET, POST, PUT, DELETE, OPTIONS");
@@ -58,35 +58,12 @@ function initDatabase($pdo) {
             created_at DATETIME DEFAULT CURRENT_TIMESTAMP
         );
 
-        CREATE TABLE IF NOT EXISTS categories (
+        CREATE TABLE IF NOT EXISTS genres (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             title TEXT NOT NULL,
-            icon TEXT DEFAULT 'bi-collection-play',
+            icon TEXT DEFAULT 'bi-film',
             status INTEGER DEFAULT 1,
             created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-        );
-
-        CREATE TABLE IF NOT EXISTS courses (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            category_id INTEGER,
-            title TEXT NOT NULL,
-            description TEXT,
-            thumbnail TEXT,
-            price REAL DEFAULT 0.00,
-            status INTEGER DEFAULT 1,
-            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-            FOREIGN KEY (category_id) REFERENCES categories(id) ON DELETE SET NULL
-        );
-
-        CREATE TABLE IF NOT EXISTS chapters (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            course_id INTEGER NOT NULL,
-            title TEXT NOT NULL,
-            description TEXT,
-            sort_order INTEGER DEFAULT 1,
-            status INTEGER DEFAULT 1,
-            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-            FOREIGN KEY (course_id) REFERENCES courses(id) ON DELETE CASCADE
         );
 
         CREATE TABLE IF NOT EXISTS dm_accounts (
@@ -105,105 +82,142 @@ function initDatabase($pdo) {
             created_at DATETIME DEFAULT CURRENT_TIMESTAMP
         );
 
-        CREATE TABLE IF NOT EXISTS videos (
+        -- Media Catalog (Movies and Web Series)
+        CREATE TABLE IF NOT EXISTS media_items (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
-            course_id INTEGER NOT NULL,
-            chapter_id INTEGER DEFAULT 0,
-            dm_account_id INTEGER DEFAULT 0,
+            type TEXT NOT NULL DEFAULT 'movie', -- 'movie' or 'series'
+            genre_id INTEGER,
             title TEXT NOT NULL,
             description TEXT,
+            poster TEXT,            -- Portrait poster
+            backdrop TEXT,          -- Landscape banner / cover
+            release_year TEXT,      -- e.g. '2024'
+            duration TEXT,          -- e.g. '2h 15m' for movie, or '3 Seasons' for series
+            rating TEXT DEFAULT '8.5',
+            language TEXT DEFAULT 'Hindi',
+            dailymotion_id TEXT,    -- For standalone movie stream
+            stream_url TEXT,        -- Direct MP4/HLS/M3U8 (optional)
+            is_featured INTEGER DEFAULT 0,
+            status INTEGER DEFAULT 1,
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (genre_id) REFERENCES genres(id) ON DELETE SET NULL
+        );
+
+        -- Seasons for Series (Parent: media_items where type='series')
+        CREATE TABLE IF NOT EXISTS seasons (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            series_id INTEGER NOT NULL,
+            season_number INTEGER NOT NULL DEFAULT 1,
+            title TEXT NOT NULL,
+            description TEXT,
+            poster TEXT,
+            status INTEGER DEFAULT 1,
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (series_id) REFERENCES media_items(id) ON DELETE CASCADE
+        );
+
+        -- Episodes (Parent: seasons)
+        CREATE TABLE IF NOT EXISTS episodes (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            series_id INTEGER NOT NULL,
+            season_id INTEGER NOT NULL,
+            dm_account_id INTEGER DEFAULT 0,
+            episode_number INTEGER NOT NULL DEFAULT 1,
+            title TEXT NOT NULL,
+            description TEXT,
+            thumbnail TEXT,
             dailymotion_id TEXT NOT NULL,
-            duration TEXT DEFAULT '15:00',
-            sort_order INTEGER DEFAULT 1,
+            stream_url TEXT,
+            duration TEXT DEFAULT '45:00',
             is_free_preview INTEGER DEFAULT 0,
             status INTEGER DEFAULT 1,
             created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-            FOREIGN KEY (course_id) REFERENCES courses(id) ON DELETE CASCADE
+            FOREIGN KEY (series_id) REFERENCES media_items(id) ON DELETE CASCADE,
+            FOREIGN KEY (season_id) REFERENCES seasons(id) ON DELETE CASCADE
         );
+
+        -- Legacy Views for backwards-compatibility
+        CREATE VIEW IF NOT EXISTS categories AS SELECT id, title, icon, status, created_at FROM genres;
+        CREATE VIEW IF NOT EXISTS courses AS SELECT id, genre_id as category_id, title, description, poster as thumbnail, 0.0 as price, status, created_at FROM media_items;
+        CREATE VIEW IF NOT EXISTS chapters AS SELECT id, series_id as course_id, title, description, season_number as sort_order, status, created_at FROM seasons;
+        CREATE VIEW IF NOT EXISTS videos AS SELECT id, series_id as course_id, season_id as chapter_id, dm_account_id, title, description, dailymotion_id, duration, episode_number as sort_order, is_free_preview, status, created_at FROM episodes;
     ");
 
-    // Migrations for videos table
-    try {
-        $videoCols = $pdo->query("PRAGMA table_info(videos)")->fetchAll(PDO::FETCH_COLUMN, 1);
-        if (!in_array('chapter_id', $videoCols)) {
-            $pdo->exec("ALTER TABLE videos ADD COLUMN chapter_id INTEGER DEFAULT 0");
-        }
-        if (!in_array('dm_account_id', $videoCols)) {
-            $pdo->exec("ALTER TABLE videos ADD COLUMN dm_account_id INTEGER DEFAULT 0");
-        }
-    } catch (Exception $e) {}
-
-    // Migrations for chapters table
-    try {
-        $chCols = $pdo->query("PRAGMA table_info(chapters)")->fetchAll(PDO::FETCH_COLUMN, 1);
-        if (!in_array('status', $chCols)) {
-            $pdo->exec("ALTER TABLE chapters ADD COLUMN status INTEGER DEFAULT 1");
-        }
-        if (!in_array('sort_order', $chCols)) {
-            $pdo->exec("ALTER TABLE chapters ADD COLUMN sort_order INTEGER DEFAULT 1");
-        }
-    } catch (Exception $e) {}
-
-    // Migrations for courses table
-    try {
-        $courseCols = $pdo->query("PRAGMA table_info(courses)")->fetchAll(PDO::FETCH_COLUMN, 1);
-        if (!in_array('status', $courseCols)) {
-            $pdo->exec("ALTER TABLE courses ADD COLUMN status INTEGER DEFAULT 1");
-        }
-    } catch (Exception $e) {}
-
-    // Seed default Dailymotion account if empty
-    try {
-        $accCount = $pdo->query("SELECT COUNT(*) FROM dm_accounts")->fetchColumn();
-        if ($accCount == 0) {
-            $tokenFile = __DIR__ . '/../database/dm_user_token.json';
-            $tData = file_exists($tokenFile) ? json_decode(@file_get_contents($tokenFile), true) : null;
-            $insAcc = $pdo->prepare("INSERT INTO dm_accounts (name, channel_name, uid, email, client_id, client_secret, refresh_token, access_token, expires_at, is_default, status) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1, 1)");
-            $insAcc->execute([
-                'Primary Account (Maths)',
-                'SSC ROCKSTAR',
-                $tData['uid'] ?? 'x2q3pq9',
-                'jaatmoviescollection@gmail.com',
-                '2f565bdf5ec09e7464db',
-                '6494629f246182ce9acd3c066a7ab5fae5598a06',
-                $tData['refresh_token'] ?? '66e1c1b82878cc7db7c3b3689800eb7b96091b8a',
-                $tData['access_token'] ?? 'dWRrcypdfX59IEJDFV5CPBc6GAFiRhgoNThoDAtyLWkz',
-                $tData['expires_at'] ?? (time() + 36000)
-            ]);
-        }
-    } catch (Exception $e) {}
-
-    // Ensure admin user exists with password 'admin'
-    $adminPwd = password_hash('admin', PASSWORD_BCRYPT);
-    $checkAdmin = $pdo->prepare("SELECT id FROM admins WHERE username = 'admin'");
-    $checkAdmin->execute();
-    if (!$checkAdmin->fetch()) {
-        $insertAdmin = $pdo->prepare("INSERT INTO admins (username, password, name) VALUES ('admin', ?, 'Super Admin')");
-        $insertAdmin->execute([$adminPwd]);
-    } else {
-        // Update password to 'admin'
-        $upAdmin = $pdo->prepare("UPDATE admins SET password = ? WHERE username = 'admin'");
-        $upAdmin->execute([$adminPwd]);
+    // Insert Default Admin
+    $stmt = $pdo->prepare("SELECT COUNT(*) FROM admins");
+    $stmt->execute();
+    if ($stmt->fetchColumn() == 0) {
+        $hash = password_hash('admin123', PASSWORD_BCRYPT);
+        $pdo->prepare("INSERT INTO admins (username, password, name) VALUES ('admin', ?, 'Cinema Master Admin')")->execute([$hash]);
     }
 
-    // Seed default categories if empty
-    $cStmt = $pdo->query("SELECT COUNT(*) FROM categories");
-    if ($cStmt->fetchColumn() == 0) {
-        $pdo->exec("
-            INSERT INTO categories (id, title, icon) VALUES
-            (1, 'Haryana CET & HSSC', 'bi-book-half'),
-            (2, 'SSC & Railway Special', 'bi-award'),
-            (3, 'Computer & Coding Basics', 'bi-laptop');
+    // Insert Default Genres
+    $gCount = $pdo->query("SELECT COUNT(*) FROM genres")->fetchColumn();
+    if ($gCount == 0) {
+        $genres = [
+            ['Action & Thriller', 'bi-lightning-charge'],
+            ['Bollywood Blockbusters', 'bi-camera-reels'],
+            ['Hollywood Hindi Dubbed', 'bi-globe-americas'],
+            ['Web Series & Crime', 'bi-tv'],
+            ['Comedy & Family', 'bi-emoji-smile'],
+            ['Sci-Fi & Fantasy', 'bi-stars']
+        ];
+        $gStmt = $pdo->prepare("INSERT INTO genres (title, icon) VALUES (?, ?)");
+        foreach ($genres as $g) {
+            $gStmt->execute([$g[0], $g[1]]);
+        }
+    }
 
-            INSERT INTO courses (id, category_id, title, description, thumbnail, price) VALUES
-            (1, 1, 'HSSC CET Super Batch 2026', 'Complete syllabus preparation with daily lectures, private class videos and mock tests.', 'https://images.unsplash.com/photo-1434030216411-0b793f4b4173?w=600&auto=format&fit=crop&q=80', 499.00),
-            (2, 2, 'Maths & Reasoning Shortcut Masterclass', 'Shortcut tricks and previous year solved questions for all competitive exams.', 'https://images.unsplash.com/photo-1509228468518-180dd4864904?w=600&auto=format&fit=crop&q=80', 299.00);
+    // Insert Sample Movie and Web Series if empty
+    $mCount = $pdo->query("SELECT COUNT(*) FROM media_items")->fetchColumn();
+    if ($mCount == 0) {
+        // Sample Movie
+        $insMovie = $pdo->prepare("INSERT INTO media_items (type, genre_id, title, description, poster, backdrop, release_year, duration, rating, language, dailymotion_id, is_featured) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
+        $insMovie->execute([
+            'movie',
+            1,
+            'Jawan: Extended Cut',
+            'A high-octane action thriller detailing an emotional journey of a man who is set to rectify the wrongs in the society.',
+            'https://images.unsplash.com/photo-1536440136628-849c177e76a1?w=600&auto=format&fit=crop&q=80',
+            'https://images.unsplash.com/photo-1574267432553-4b4628081c31?w=1200&auto=format&fit=crop&q=80',
+            '2023',
+            '2h 45m',
+            '8.8',
+            'Hindi',
+            'x8n0001',
+            1
+        ]);
 
-            INSERT INTO videos (id, course_id, title, description, dailymotion_id, duration, sort_order, is_free_preview) VALUES
-            (1, 1, 'Lecture 01: Haryana History & Important Dynasties', 'Introduction to Ancient Haryana & Vedic Period landmarks.', 'x98hbpm', '32:45', 1, 1),
-            (2, 1, 'Lecture 02: Haryana Geography, Rivers & Canals', 'Deep dive into Yamuna, Ghaggar and irrigation systems.', 'x98hbpm', '28:10', 2, 0),
-            (3, 2, 'Speed Maths: 5-Second Square & Cube Root Tricks', 'Calculation speed hacks for competitive exams.', 'x98hbpm', '18:20', 1, 1);
-        ");
+        // Sample Web Series
+        $insMovie->execute([
+            'series',
+            4,
+            'Mirzapur: Season of Vengeance',
+            'A shocking incident at a wedding procession ignites a series of events entangling the lives of two families in the lawless city of Mirzapur.',
+            'https://images.unsplash.com/photo-1616530940355-351fabd9524b?w=600&auto=format&fit=crop&q=80',
+            'https://images.unsplash.com/photo-1518676590629-3dcbd9c5a5c9?w=1200&auto=format&fit=crop&q=80',
+            '2024',
+            '3 Seasons',
+            '9.1',
+            'Hindi',
+            '',
+            1
+        ]);
+        $seriesId = $pdo->lastInsertId();
+
+        // Sample Seasons
+        $insSeason = $pdo->prepare("INSERT INTO seasons (series_id, season_number, title, description, poster) VALUES (?, ?, ?, ?, ?)");
+        $insSeason->execute([$seriesId, 1, 'Season 1: Rule of Akhandanand', 'The rise of Kaleen Bhaiya and the conflict with Guddu & Bablu.', 'https://images.unsplash.com/photo-1616530940355-351fabd9524b?w=600&auto=format&fit=crop&q=80']);
+        $season1Id = $pdo->lastInsertId();
+
+        $insSeason->execute([$seriesId, 2, 'Season 2: Retribution', 'Blood boils and empires clash for total control of Purvanchal.', 'https://images.unsplash.com/photo-1616530940355-351fabd9524b?w=600&auto=format&fit=crop&q=80']);
+        $season2Id = $pdo->lastInsertId();
+
+        // Sample Episodes
+        $insEp = $pdo->prepare("INSERT INTO episodes (series_id, season_id, episode_number, title, description, thumbnail, dailymotion_id, duration, is_free_preview) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)");
+        $insEp->execute([$seriesId, $season1Id, 1, 'Episode 1: Bhaukaal', 'Akhandanand Tripathi is a carpet exporter and the mafia don of Mirzapur.', 'https://images.unsplash.com/photo-1518676590629-3dcbd9c5a5c9?w=600&auto=format&fit=crop&q=80', 'x8n0002', '48:10', 1]);
+        $insEp->execute([$seriesId, $season1Id, 2, 'Episode 2: Gaddi', 'Guddu and Bablu must decide where their true loyalty lies.', 'https://images.unsplash.com/photo-1518676590629-3dcbd9c5a5c9?w=600&auto=format&fit=crop&q=80', 'x8n0003', '52:15', 0]);
+        $insEp->execute([$seriesId, $season2Id, 1, 'Episode 1: Dhenkul', 'The war begins anew as surviving factions regroup for vengeance.', 'https://images.unsplash.com/photo-1518676590629-3dcbd9c5a5c9?w=600&auto=format&fit=crop&q=80', 'x8n0004', '56:00', 1]);
     }
 }
 
@@ -213,282 +227,42 @@ function sendResponse($status, $message, $data = null, $code = 200) {
     echo json_encode([
         'status' => $status,
         'message' => $message,
-        'data' => $data,
-        'timestamp' => time()
-    ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+        'data' => $data
+    ]);
     exit();
 }
 
-/**
- * Robust HTTP POST helper for Dailymotion API.
- * Uses native stream context first (bypasses Hostinger CloudFront TCP RST) with cURL fallback.
- */
-function httpPostDailymotion($url, $postData, $headers = []) {
-    $headerStr = "Content-Type: application/x-www-form-urlencoded\r\nUser-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64)\r\nContent-Length: " . strlen($postData) . "\r\n";
-    foreach ($headers as $h) {
-        $headerStr .= $h . "\r\n";
+function requireAdminAuth($pdo) {
+    if (session_status() === PHP_SESSION_NONE) {
+        session_start();
     }
-
-    $opts = [
-        'http' => [
-            'method' => 'POST',
-            'header' => $headerStr,
-            'content' => $postData,
-            'timeout' => 12,
-            'ignore_errors' => true
-        ],
-        'ssl' => [
-            'verify_peer' => false,
-            'verify_peer_name' => false
-        ]
-    ];
-    $ctx = stream_context_create($opts);
-    $res = @file_get_contents($url, false, $ctx);
-
-    if (!$res) {
-        $ch = curl_init($url);
-        curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-        curl_setopt($ch, CURLOPT_POST, true);
-        curl_setopt($ch, CURLOPT_POSTFIELDS, $postData);
-        if (!empty($headers)) {
-            curl_setopt($ch, CURLOPT_HTTPHEADER, $headers);
-        }
-        curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
-        curl_setopt($ch, CURLOPT_SSL_VERIFYHOST, 2);
-        curl_setopt($ch, CURLOPT_TIMEOUT, 12);
-        $res = curl_exec($ch);
-        curl_close($ch);
+    if (!isset($_SESSION['admin_id'])) {
+        sendResponse(false, 'Unauthorized. Please login.', null, 401);
     }
-
-    return $res;
 }
 
-/**
- * Robust HTTP GET helper for Dailymotion API.
- */
-function httpGetDailymotion($url, $headers = []) {
-    $headerStr = "User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64)\r\nAccept: application/json\r\n";
-    foreach ($headers as $h) {
-        $headerStr .= $h . "\r\n";
-    }
-
-    $opts = [
-        'http' => [
-            'method' => 'GET',
-            'header' => $headerStr,
-            'timeout' => 12,
-            'ignore_errors' => true
-        ],
-        'ssl' => [
-            'verify_peer' => false,
-            'verify_peer_name' => false
-        ]
-    ];
-    $ctx = stream_context_create($opts);
-    $res = @file_get_contents($url, false, $ctx);
-
-    if (!$res) {
-        $ch = curl_init($url);
-        curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-        if (!empty($headers)) {
-            curl_setopt($ch, CURLOPT_HTTPHEADER, $headers);
-        }
-        curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
-        curl_setopt($ch, CURLOPT_SSL_VERIFYHOST, 2);
-        curl_setopt($ch, CURLOPT_TIMEOUT, 12);
-        $res = curl_exec($ch);
-        curl_close($ch);
-    }
-
-    return $res;
-}
-
-/**
- * Retrieve or automatically refresh the Dailymotion Owner Access Token.
- * If expired or within 5 minutes of expiration, refreshes via refresh_token.
- */
-function getDailymotionAccessToken($forceRefresh = false) {
-    $tokenFile = __DIR__ . '/../database/dm_user_token.json';
-    if (!file_exists($tokenFile)) {
-        return null;
-    }
-
-    $tokenData = json_decode(@file_get_contents($tokenFile), true);
-    if (!$tokenData || !is_array($tokenData)) {
-        return null;
-    }
-
-    $now = time();
-    $expiresAt = (int)($tokenData['expires_at'] ?? 0);
-    $needsRefresh = $forceRefresh || ($expiresAt === 0) || ($now >= ($expiresAt - 300));
-
-    if ($needsRefresh && !empty($tokenData['refresh_token'])) {
-        $postData = http_build_query([
-            'grant_type' => 'refresh_token',
-            'client_id' => '2f565bdf5ec09e7464db',
-            'client_secret' => '6494629f246182ce9acd3c066a7ab5fae5598a06',
-            'refresh_token' => $tokenData['refresh_token']
-        ]);
-
-        $res = httpPostDailymotion('https://api.dailymotion.com/oauth/token', $postData);
-
-        if ($res) {
-            $newTokens = json_decode($res, true);
-            if (!empty($newTokens['access_token'])) {
-                $tokenData['access_token'] = $newTokens['access_token'];
-                if (!empty($newTokens['refresh_token'])) {
-                    $tokenData['refresh_token'] = $newTokens['refresh_token'];
-                }
-                $expiresIn = (int)($newTokens['expires_in'] ?? 36000);
-                $tokenData['expires_at'] = $now + $expiresIn;
-                @file_put_contents($tokenFile, json_encode($tokenData, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
-                return $tokenData['access_token'];
-            }
-        }
-    }
-
-    return $tokenData['access_token'] ?? null;
-}
-
-/**
- * Refresh an individual Dailymotion account's access token using its refresh_token.
- */
-function refreshDmAccount($pdo, &$account, $forceRefresh = false) {
-    if (!$account || empty($account['refresh_token'])) {
-        return null;
-    }
-
-    $now = time();
-    $expiresAt = (int)($account['expires_at'] ?? 0);
-    $needsRefresh = $forceRefresh || ($expiresAt === 0) || ($now >= ($expiresAt - 300));
-
-    if (!$needsRefresh && !empty($account['access_token'])) {
-        return $account['access_token'];
-    }
-
-    $postData = http_build_query([
-        'grant_type' => 'refresh_token',
-        'client_id' => $account['client_id'],
-        'client_secret' => $account['client_secret'],
-        'refresh_token' => $account['refresh_token']
-    ]);
-
-    $res = httpPostDailymotion('https://api.dailymotion.com/oauth/token', $postData);
-
-    if ($res) {
-        $newTokens = json_decode($res, true);
-        if (!empty($newTokens['access_token'])) {
-            $account['access_token'] = $newTokens['access_token'];
-            if (!empty($newTokens['refresh_token'])) {
-                $account['refresh_token'] = $newTokens['refresh_token'];
-            }
-            $expiresIn = (int)($newTokens['expires_in'] ?? 36000);
-            $account['expires_at'] = $now + $expiresIn;
-
-            if (isset($account['id']) && $pdo) {
-                try {
-                    $up = $pdo->prepare("UPDATE dm_accounts SET access_token = ?, refresh_token = ?, expires_at = ? WHERE id = ?");
-                    $up->execute([$account['access_token'], $account['refresh_token'], $account['expires_at'], $account['id']]);
-                } catch (Exception $e) {}
-            }
-
-            // Sync default account to dm_user_token.json for backwards compatibility
-            if (!empty($account['is_default'])) {
-                $tokenFile = __DIR__ . '/../database/dm_user_token.json';
-                @file_put_contents($tokenFile, json_encode($account, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
-            }
-
-            return $account['access_token'];
-        }
-    }
-
-    return $account['access_token'] ?? null;
-}
-
-/**
- * Get access token for a specific account or default account
- */
-function getDmAccountToken($pdo, $accountId = null, $forceRefresh = false) {
-    if (!$pdo) return getDailymotionAccessToken($forceRefresh);
-
+function getAppStats($pdo) {
     try {
-        if ($accountId && $accountId > 0) {
-            $stmt = $pdo->prepare("SELECT * FROM dm_accounts WHERE id = ? AND status = 1");
-            $stmt->execute([$accountId]);
-            $acc = $stmt->fetch();
-            if ($acc) {
-                return refreshDmAccount($pdo, $acc, $forceRefresh);
-            }
-        }
+        $genres = $pdo->query("SELECT COUNT(*) FROM genres WHERE status = 1")->fetchColumn();
+        $movies = $pdo->query("SELECT COUNT(*) FROM media_items WHERE type = 'movie' AND status = 1")->fetchColumn();
+        $series = $pdo->query("SELECT COUNT(*) FROM media_items WHERE type = 'series' AND status = 1")->fetchColumn();
+        $episodes = $pdo->query("SELECT COUNT(*) FROM episodes WHERE status = 1")->fetchColumn();
+        $users = $pdo->query("SELECT COUNT(*) FROM users")->fetchColumn();
+        $dmAccounts = $pdo->query("SELECT COUNT(*) FROM dm_accounts WHERE status = 1")->fetchColumn();
 
-        // Get default or first active account
-        $stmt = $pdo->query("SELECT * FROM dm_accounts WHERE status = 1 ORDER BY is_default DESC, id ASC LIMIT 1");
-        $acc = $stmt ? $stmt->fetch() : null;
-        if ($acc) {
-            return refreshDmAccount($pdo, $acc, $forceRefresh);
-        }
-    } catch (Exception $e) {}
-
-    return getDailymotionAccessToken($forceRefresh);
-}
-
-/**
- * Query Dailymotion across all connected accounts until one succeeds.
- * Returns array: ['account' => $account, 'video' => $videoData, 'token' => $token] or null
- */
-function findDmAccountForVideo($pdo, $videoId, $preferredAccountId = 0) {
-    $cleanId = $videoId;
-    if (preg_match('/(?:dailymotion\.com\/(?:video|hub)\/|dai\.ly\/)([a-zA-Z0-9]+)/', $videoId, $m)) {
-        $cleanId = $m[1];
-    }
-
-    $accounts = [];
-    if ($pdo) {
-        try {
-            $stmt = $pdo->query("SELECT * FROM dm_accounts WHERE status = 1 ORDER BY is_default DESC, id ASC");
-            $accounts = $stmt->fetchAll();
-        } catch (Exception $e) {}
-    }
-
-    // Sort preferred account first if specified
-    if ($preferredAccountId > 0) {
-        usort($accounts, function($a, $b) use ($preferredAccountId) {
-            if ($a['id'] == $preferredAccountId) return -1;
-            if ($b['id'] == $preferredAccountId) return 1;
-            return 0;
-        });
-    }
-
-    $queryOne = function($vid, $token) {
-        $url = "https://api.dailymotion.com/video/" . $vid . "?fields=id,title,duration,thumbnail_url,private,embed_url";
-        $headers = $token ? ["Authorization: Bearer " . $token] : [];
-        $res = httpGetDailymotion($url, $headers);
-        return $res ? json_decode($res, true) : null;
-    };
-
-    // Try each account in pool
-    foreach ($accounts as $acc) {
-        $token = refreshDmAccount($pdo, $acc);
-        $vJson = $queryOne($cleanId, $token);
-        if ($vJson && isset($vJson['id'])) {
-            return [
-                'account' => $acc,
-                'video' => $vJson,
-                'token' => $token
-            ];
-        }
-    }
-
-    // Fallback: try unauthenticated (public video)
-    $pubJson = $queryOne($cleanId, null);
-    if ($pubJson && isset($pubJson['id'])) {
         return [
-            'account' => null,
-            'video' => $pubJson,
-            'token' => null
+            'genres' => (int)$genres,
+            'movies' => (int)$movies,
+            'series' => (int)$series,
+            'episodes' => (int)$episodes,
+            'users' => (int)$users,
+            'dm_accounts' => (int)$dmAccounts,
+            // Backwards compatibility for templates
+            'courses' => (int)($movies + $series),
+            'chapters' => (int)$series,
+            'videos' => (int)($movies + $episodes)
         ];
+    } catch (Exception $e) {
+        return ['genres' => 0, 'movies' => 0, 'series' => 0, 'episodes' => 0, 'users' => 0, 'dm_accounts' => 0, 'courses' => 0, 'chapters' => 0, 'videos' => 0];
     }
-
-    return null;
 }
-

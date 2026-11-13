@@ -1,130 +1,183 @@
 <?php
-// backend/api/courses.php - Course, Chapter, and Video API (Course -> Chapter -> Video)
+// backend/api/courses.php - Universal Movies & Series API (Dual compatibility: Modern Cinema API + Legacy CourseApp)
 require_once __DIR__ . '/config.php';
 
 $action = $_GET['action'] ?? 'list';
 
 switch ($action) {
     case 'list':
-        $categoryId = isset($_GET['category_id']) ? (int)$_GET['category_id'] : 0;
-        $sql = "SELECT c.*, cat.title as category_name, 
-                       (SELECT COUNT(*) FROM chapters ch WHERE ch.course_id = c.id AND ch.status = 1) as total_chapters,
-                       (SELECT COUNT(*) FROM videos v WHERE v.course_id = c.id AND v.status = 1) as total_videos 
-                FROM courses c 
-                LEFT JOIN categories cat ON c.category_id = cat.id 
-                WHERE c.status = 1";
-        
+    case 'movies':
+    case 'series':
+        $type = $_GET['type'] ?? '';
+        if ($action === 'movies') $type = 'movie';
+        if ($action === 'series') $type = 'series';
+
+        $genreId = isset($_GET['genre_id']) ? (int)$_GET['genre_id'] : (int)($_GET['category_id'] ?? 0);
+        $search = trim($_GET['search'] ?? '');
+        $featured = isset($_GET['featured']) ? (int)$_GET['featured'] : 0;
+
+        $sql = "SELECT m.*, g.title as genre_name, g.title as category_name,
+                       (SELECT COUNT(*) FROM seasons s WHERE s.series_id = m.id AND s.status = 1) as total_seasons,
+                       (SELECT COUNT(*) FROM episodes e WHERE e.series_id = m.id AND e.status = 1) as total_episodes,
+                       -- Legacy fields for courseapp compatibility:
+                       (SELECT COUNT(*) FROM seasons s WHERE s.series_id = m.id AND s.status = 1) as total_chapters,
+                       (SELECT COUNT(*) FROM episodes e WHERE e.series_id = m.id AND e.status = 1) as total_videos,
+                       m.poster as thumbnail,
+                       0.0 as price
+                FROM media_items m
+                LEFT JOIN genres g ON m.genre_id = g.id
+                WHERE m.status = 1";
+
         $params = [];
-        if ($categoryId > 0) {
-            $sql .= " AND c.category_id = ?";
-            $params[] = $categoryId;
+        if (!empty($type)) {
+            $sql .= " AND m.type = ?";
+            $params[] = $type;
         }
-        $sql .= " ORDER BY c.id DESC";
+        if ($genreId > 0) {
+            $sql .= " AND m.genre_id = ?";
+            $params[] = $genreId;
+        }
+        if ($featured > 0) {
+            $sql .= " AND m.is_featured = 1";
+        }
+        if (!empty($search)) {
+            $sql .= " AND (m.title LIKE ? OR m.description LIKE ?)";
+            $params[] = "%$search%";
+            $params[] = "%$search%";
+        }
+
+        $sql .= " ORDER BY m.is_featured DESC, m.id DESC";
 
         $stmt = $pdo->prepare($sql);
         $stmt->execute($params);
-        $courses = $stmt->fetchAll();
+        $items = $stmt->fetchAll();
 
-        sendResponse(true, "Courses retrieved successfully", $courses);
+        // Also fetch genres for filter tabs
+        $genres = $pdo->query("SELECT id, title, icon FROM genres WHERE status = 1 ORDER BY id ASC")->fetchAll();
+
+        // Send response (compatible with both Course list and Cinema list)
+        http_response_code(200);
+        header('Content-Type: application/json; charset=utf-8');
+        echo json_encode([
+            'status' => true,
+            'message' => 'Media catalog retrieved successfully',
+            'data' => $items,
+            'genres' => $genres
+        ]);
+        exit();
         break;
 
     case 'detail':
         $id = (int)($_GET['id'] ?? 0);
         if ($id <= 0) {
-            sendResponse(false, "Invalid course ID", null, 400);
+            sendResponse(false, "Invalid Media ID", null, 400);
         }
 
-        $stmt = $pdo->prepare("SELECT c.*, cat.title as category_name,
-                               (SELECT COUNT(*) FROM chapters ch WHERE ch.course_id = c.id AND ch.status = 1) as total_chapters,
-                               (SELECT COUNT(*) FROM videos v WHERE v.course_id = c.id AND v.status = 1) as total_videos 
-                               FROM courses c 
-                               LEFT JOIN categories cat ON c.category_id = cat.id 
-                               WHERE c.id = ?");
+        $stmt = $pdo->prepare("SELECT m.*, g.title as genre_name, g.title as category_name,
+                                      m.poster as thumbnail,
+                                      0.0 as price,
+                                      (SELECT COUNT(*) FROM seasons s WHERE s.series_id = m.id AND s.status = 1) as total_seasons,
+                                      (SELECT COUNT(*) FROM episodes e WHERE e.series_id = m.id AND e.status = 1) as total_episodes,
+                                      (SELECT COUNT(*) FROM seasons s WHERE s.series_id = m.id AND s.status = 1) as total_chapters,
+                                      (SELECT COUNT(*) FROM episodes e WHERE e.series_id = m.id AND e.status = 1) as total_videos
+                               FROM media_items m
+                               LEFT JOIN genres g ON m.genre_id = g.id
+                               WHERE m.id = ?");
         $stmt->execute([$id]);
-        $course = $stmt->fetch();
+        $media = $stmt->fetch();
 
-        if (!$course) {
-            sendResponse(false, "Course not found", null, 404);
+        if (!$media) {
+            sendResponse(false, "Title not found", null, 404);
         }
 
-        // Fetch chapters for this course
-        $chStmt = $pdo->prepare("SELECT id, course_id, title, description, sort_order 
-                                 FROM chapters 
-                                 WHERE course_id = ? AND status = 1 
-                                 ORDER BY sort_order ASC, id ASC");
-        $chStmt->execute([$id]);
-        $chapters = $chStmt->fetchAll();
+        // If it's a series, fetch seasons and episodes
+        if ($media['type'] === 'series') {
+            $sStmt = $pdo->prepare("SELECT id, series_id, season_number, title, description, poster 
+                                    FROM seasons 
+                                    WHERE series_id = ? AND status = 1 
+                                    ORDER BY season_number ASC, id ASC");
+            $sStmt->execute([$id]);
+            $seasons = $sStmt->fetchAll();
 
-        // Fetch all videos for this course
-        $vStmt = $pdo->prepare("SELECT id, course_id, chapter_id, title, description, dailymotion_id, duration, sort_order, is_free_preview 
-                                FROM videos 
-                                WHERE course_id = ? AND status = 1 
-                                ORDER BY sort_order ASC, id ASC");
-        $vStmt->execute([$id]);
-        $allVideos = $vStmt->fetchAll();
+            $epStmt = $pdo->prepare("SELECT id, series_id, season_id, episode_number, title, description, thumbnail, dailymotion_id, duration, is_free_preview 
+                                     FROM episodes 
+                                     WHERE series_id = ? AND status = 1 
+                                     ORDER BY episode_number ASC, id ASC");
+            $epStmt->execute([$id]);
+            $episodes = $epStmt->fetchAll();
 
-        // Group videos by chapter
-        $videosByChapter = [];
-        $unassignedVideos = [];
-
-        foreach ($allVideos as $v) {
-            $cId = (int)($v['chapter_id'] ?? 0);
-            if ($cId > 0) {
-                $videosByChapter[$cId][] = $v;
-            } else {
-                $unassignedVideos[] = $v;
+            $epBySeason = [];
+            foreach ($episodes as $ep) {
+                $ep['chapter_id'] = $ep['season_id'];
+                $ep['course_id'] = $ep['series_id'];
+                $ep['sort_order'] = $ep['episode_number'];
+                $epBySeason[$ep['season_id']][] = $ep;
             }
-        }
 
-        $groupedChapters = [];
-        foreach ($chapters as $ch) {
-            $chId = (int)$ch['id'];
-            $ch['videos'] = $videosByChapter[$chId] ?? [];
-            $ch['total_videos'] = count($ch['videos']);
-            $groupedChapters[] = $ch;
-        }
+            $groupedSeasons = [];
+            foreach ($seasons as $season) {
+                $sId = (int)$season['id'];
+                $seasonList = $epBySeason[$sId] ?? [];
+                $season['total_episodes'] = count($seasonList);
+                $season['episodes'] = $seasonList;
+                // Backwards compatibility for ChaptersActivity & PlayerActivity
+                $season['course_id'] = $id;
+                $season['sort_order'] = $season['season_number'];
+                $season['videos'] = $seasonList;
+                $season['total_videos'] = count($seasonList);
+                $groupedSeasons[] = $season;
+            }
 
-        // If any videos are unassigned (or no chapters exist), wrap them in a chapter
-        if (!empty($unassignedVideos)) {
-            $groupedChapters[] = [
-                'id' => 0,
-                'course_id' => $id,
-                'title' => empty($chapters) ? 'All Lectures' : 'General / Additional Lectures',
-                'description' => 'Course lectures',
-                'sort_order' => 999,
-                'total_videos' => count($unassignedVideos),
-                'videos' => $unassignedVideos
+            $media['seasons'] = $groupedSeasons;
+            $media['chapters'] = $groupedSeasons; // For Kotlin ChapterAdapter
+        } else {
+            // Standalone Movie
+            $movieLesson = [
+                'id' => $media['id'],
+                'course_id' => $media['id'],
+                'chapter_id' => 1,
+                'series_id' => $media['id'],
+                'season_id' => 1,
+                'episode_number' => 1,
+                'sort_order' => 1,
+                'title' => $media['title'] . ' (Full Movie)',
+                'description' => $media['description'],
+                'dailymotion_id' => $media['dailymotion_id'],
+                'stream_url' => $media['stream_url'],
+                'thumbnail' => $media['poster'],
+                'duration' => $media['duration'],
+                'is_free_preview' => 1
             ];
+
+            $movieSeason = [
+                'id' => 1,
+                'series_id' => $media['id'],
+                'course_id' => $media['id'],
+                'season_number' => 1,
+                'sort_order' => 1,
+                'title' => 'Main Feature',
+                'description' => 'Full Length Movie',
+                'poster' => $media['poster'],
+                'total_episodes' => 1,
+                'total_videos' => 1,
+                'episodes' => [$movieLesson],
+                'videos' => [$movieLesson]
+            ];
+
+            $media['seasons'] = [$movieSeason];
+            $media['chapters'] = [$movieSeason];
         }
 
-        $course['chapters'] = $groupedChapters;
-        $course['videos'] = $allVideos; // preserve flat list for backwards compatibility
-
-        sendResponse(true, "Course details retrieved", $course);
+        sendResponse(true, "Media details loaded successfully", $media);
         break;
 
-    case 'chapters':
-        $courseId = (int)($_GET['course_id'] ?? 0);
-        if ($courseId <= 0) {
-            sendResponse(false, "Course ID is required", null, 400);
-        }
-        $stmt = $pdo->prepare("SELECT ch.*, 
-                               (SELECT COUNT(*) FROM videos v WHERE v.chapter_id = ch.id AND v.status = 1) as total_videos 
-                               FROM chapters ch 
-                               WHERE ch.course_id = ? AND ch.status = 1 
-                               ORDER BY ch.sort_order ASC, ch.id ASC");
-        $stmt->execute([$courseId]);
-        $chapters = $stmt->fetchAll();
-        sendResponse(true, "Chapters retrieved", $chapters);
-        break;
-
+    case 'genres':
     case 'categories':
-        $stmt = $pdo->query("SELECT id, title, icon, (SELECT COUNT(*) FROM courses c WHERE c.category_id = categories.id AND c.status = 1) as course_count FROM categories WHERE status = 1 ORDER BY id ASC");
-        $categories = $stmt->fetchAll();
-        sendResponse(true, "Categories retrieved", $categories);
+        $genres = $pdo->query("SELECT * FROM genres WHERE status = 1 ORDER BY id ASC")->fetchAll();
+        sendResponse(true, "Genres retrieved successfully", $genres);
         break;
 
     default:
-        sendResponse(false, "Invalid endpoint action", null, 400);
+        sendResponse(false, "Invalid action specified", null, 400);
         break;
 }
