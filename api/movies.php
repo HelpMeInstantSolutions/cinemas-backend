@@ -203,9 +203,6 @@ switch ($action) {
                 'episodes' => $movieEpisodes,
                 'videos' => $movieEpisodes
             ];
-                'episodes' => $movieEpisodes,
-                'videos' => $movieEpisodes
-            ];
 
             $media['seasons'] = [$movieSeason];
             $media['chapters'] = [$movieSeason];
