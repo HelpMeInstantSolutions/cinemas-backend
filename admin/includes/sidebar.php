@@ -80,22 +80,6 @@ $activePage = $activePage ?? 'dashboard';
                 <?= $serverStats['users'] ?? 0 ?>
             </span>
         </a>
-
-        <div class="pt-4 pb-2">
-            <p class="px-3 text-[11px] font-bold uppercase tracking-wider text-slate-400 mb-2">Shortcuts</p>
-            <a href="/admin/movies/?new=1" class="flex items-center gap-3 px-3.5 py-2 rounded-xl text-xs font-medium text-slate-300 hover:text-rose-400 hover:bg-rose-500/10 transition">
-                <i data-lucide="plus-circle" class="w-3.5 h-3.5 text-rose-500"></i>
-                <span>Add Movie / Series</span>
-            </a>
-            <a href="/admin/seasons/?new=1" class="flex items-center gap-3 px-3.5 py-2 rounded-xl text-xs font-medium text-slate-300 hover:text-amber-400 hover:bg-amber-500/10 transition">
-                <i data-lucide="folder-plus" class="w-3.5 h-3.5 text-amber-500"></i>
-                <span>Create New Season</span>
-            </a>
-            <a href="/admin/episodes/?new=1" class="flex items-center gap-3 px-3.5 py-2 rounded-xl text-xs font-medium text-slate-300 hover:text-emerald-400 hover:bg-emerald-500/10 transition">
-                <i data-lucide="tv" class="w-3.5 h-3.5 text-emerald-500"></i>
-                <span>Upload Episode Stream</span>
-            </a>
-        </div>
     </nav>
 
     <!-- Admin Account Profile & Logout Footer (Pinned Bottom) -->
